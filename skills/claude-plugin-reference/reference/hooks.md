@@ -303,6 +303,43 @@ tool 引数で filter:
 
 ## 9. 実装上の落とし穴 (実機検証 / 経験則)
 
+### 9.0 ベストプラクティス: Plugin 識別子マーカーを command 末尾に埋める
+
+claude runtime は hook block / error の表示で **展開前の command string** を identifier として使う:
+
+```
+PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh]: BLOCK: ...
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                            展開前の literal、ここから plugin 名が読み取れない
+```
+
+= **どの plugin から出たエラーか identify できない** 問題。
+
+回避策: hooks.json の command 末尾に **bash comment 形式の plugin 識別子マーカー** を埋める:
+
+```json
+{
+  "type": "command",
+  "command": "${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-guard"
+}
+```
+
+- bash shell-form では `#` 以降が comment 扱い = script 実行に影響しない [実機検証推奨]
+- claude runtime の error 表示は literal の command string をそのまま出すので、`#push-guard` が見える = plugin 名を識別可
+
+```
+PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-guard]: BLOCK: ...
+                                                                       ^^^^^^^^^^^
+                                                                       これで plugin 名わかる
+```
+
+**制約**:
+- shell-form (= `command: "..."` のみ) で有効。exec-form (= `command` + `args` 同時指定) では `#` が literal 引数として渡される可能性 → exec-form では別経路 (= env var inject 等) [未検証]
+- runtime の error message format が将来変わると無効化される可能性 [実装の副産物に依存]
+- 本来は claude runtime が展開後パスを表示するか hook output に plugin name を付けるべき (= upstream に feedback したい話)
+
+
+
 - **JSON output に shell profile の echo が混入** → invalid JSON、hook output 無視。`if [[ $- == *i* ]]; then echo ...; fi` で interactive-only guard を [実機検証推奨]
 - **hook command の wd は stdin の `cwd` と違う** → `cd "$cwd" && ...` で明示移動 [実機検証済 (cmux-msg)]
 - **多 hook の updatedInput 衝突** → 最後に finish した hook が勝つ (= deterministic order なし、coordinator hook を 1 つに集約推奨) [spec 明示]
