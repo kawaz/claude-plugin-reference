@@ -1,20 +1,60 @@
-# claude-plugin-reference push
+# claude-plugin-reference push / bump-version / validate
 # (push-guard hook 経由でこの task を使うことで、直叩き block を回避)
 
-push: ensure-clean
+# ---------- variables ----------
+
+# jj/git 判定 (cmux-msg justfile と同じ pattern)
+is-jj := path_exists('.jj')
+is-git := if is-jj == "true" { "false" } else { path_exists('.git') }
+
+# bump trigger 対象 = plugin 配布物 (skill / README) の変更
+# = これらが変更されていれば bump-version 忘れずに必要 ('docs/' 等の開発メタは対象外)
+# plugin プロジェクトは本質的提供物が md なので skills/ も bump trigger に含める
+bump-trigger-paths := "skills/ README.md"
+
+# version を持つ manifest ファイル (= bump-semver の対象)
+version-files := ".claude-plugin/plugin.json .claude-plugin/marketplace.json"
+
+# ---------- main tasks ----------
+
+push: ensure-clean check-version-bumped
     jj bookmark set main -r @-
     jj git push --bookmark main --allow-new
     claude plugin marketplace update claude-plugin-reference
     claude plugin update claude-plugin-reference@claude-plugin-reference
 
-# uncommitted change がある状態で push しない
-ensure-clean:
-    @if [ "$(jj log -r @ --no-graph -T 'empty')" = "false" ]; then echo "ERROR: @ has uncommitted changes" >&2; exit 1; fi
-
-# version bump (patch / minor / major)
+# version を bump して Release commit を作成 (push は別途 `just push`)
 bump-version bump="patch": ensure-clean
-    new_version=$(bump-semver {{ bump }} .claude-plugin/plugin.json .claude-plugin/marketplace.json --write --no-hint) && jj commit -m "Release v${new_version}"
+    new_version=$(bump-semver {{ bump }} {{ version-files }} --write --no-hint) && jj commit -m "Release v${new_version}"
 
-# validate
+# 現在の version を確認
+version:
+    @bump-semver get {{ version-files }} --no-hint
+
+# plugin spec を validate
 validate:
     claude plugin validate .
+
+# ---------- internal recipes (push の依存) ----------
+
+# uncommitted change がない状態か確認 (= @ が empty change)
+ensure-clean:
+    if {{ is-jj }}; then [ "$(jj log -r @ --no-graph -T 'empty')" = "true" ]; fi
+    if {{ is-git }}; then [ -z "$(git status --porcelain)" ]; fi
+
+# bump-trigger-paths に変更があるなら version も bump されていることを確認
+# (plugin の本質的提供物 = skill 等 md が変わったのに version 据え置きの事故を防ぐ)
+check-version-bumped:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # 変更なしなら早期 return (success)
+    if {{ is-jj }}; then
+      diff_out=$(jj diff -r 'main@origin..@' --summary -- {{ bump-trigger-paths }}) || { echo 'ERROR: jj diff failed (main@origin not tracked? run jj git fetch first)' >&2; exit 1; }
+      [ -z "$diff_out" ] && exit 0
+    elif {{ is-git }}; then
+      git diff --quiet origin/main -- {{ bump-trigger-paths }} && exit 0
+    fi
+    # バージョン更新済みなら success
+    bump-semver compare gt .claude-plugin/plugin.json vcs:main@origin:.claude-plugin/plugin.json --no-hint && exit 0
+    echo 'ERROR: bump-trigger-paths が変わってるが version 未 bump。"just bump-version" を実行してください' >&2
+    exit 1
