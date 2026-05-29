@@ -1,0 +1,16 @@
+{
+  "name": "claude-plugin-reference",
+  "owner": { "name": "kawaz" },
+  "metadata": {
+    "description": "Claude Code plugin / skill / hooks の実機検証込みリファレンス",
+    "version": "0.1.0",
+    "license": "MIT"
+  },
+  "plugins": [
+    {
+      "name": "claude-plugin-reference",
+      "description": "kawaz の Claude Code plugin / hook / skill 開発用、実機検証で確証取った一次情報リファレンス",
+      "source": "./"
+    }
+  ]
+}
