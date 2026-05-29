@@ -1,6 +1,6 @@
 # スキル編 — SKILL.md frontmatter / string substitution / Dynamic Context Injection / invocation 制御
 
-> `[spec 明示]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認、`[実装の副産物]` = spec 保証なしの挙動
+> `[spec]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認、`[実装の副産物]` = spec 保証なしの挙動
 
 ## 1. SKILL.md の配置パターン
 
@@ -26,7 +26,7 @@ my-skill/
 ```
 
 - skill 起動時に **`SKILL.md` 本文のみ AI コンテキストに流入**、reference/scripts は流入しない (= on-demand)
-- `${CLAUDE_SKILL_DIR}` で skill 自身の dir を参照可、相対 `../` で親に出るのは **セキュリティ境界違反** (= 同 dir 配下のみ参照可) [spec 明示]
+- `${CLAUDE_SKILL_DIR}` で skill 自身の dir を参照可、相対 `../` で親に出るのは **セキュリティ境界違反** (= 同 dir 配下のみ参照可) [spec]
 
 ## 3. Frontmatter 全 field
 
@@ -40,7 +40,7 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | field | 型 | 必須 | 用途 | 備考 |
 |---|---|---|---|---|
 | `name` | string | 任意 | skill 表示名 | dir 名が優先、plugin root SKILL.md のみ frontmatter `name` が command 名決定 |
-| `description` | string | 推奨 | AI invocation trigger / listing | `when_to_use` と合わせて max 1,536 文字で truncate [spec 明示] |
+| `description` | string | 推奨 | AI invocation trigger / listing | `when_to_use` と合わせて max 1,536 文字で truncate [spec] |
 | `when_to_use` | string | 任意 | description 補強 | 「ユーザが何を言ったら invoke してほしいか」 |
 | `argument-hint` | string | 任意 | autocomplete hint | 例: `[issue-number]`, `[filename] [format]` |
 | `arguments` | string\|array | 任意 | 位置引数 named getter | `arguments: [issue, branch]` で `$issue` `$branch` 展開可 |
@@ -56,7 +56,7 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | `paths` | string\|array | 任意 | glob で skill auto-invoke 対象を限定 | `"src/**/*.ts"` で .ts のみ |
 | `shell` | string | 任意 | `!`cmd`` の shell 指定 | `bash` (default) / `powershell` |
 
-[spec 明示、公式 `skills.md` frontmatter reference より]
+[spec、公式 `skills.md` frontmatter reference より]
 
 ## 4. String substitution (本文中で展開される変数)
 
@@ -73,13 +73,13 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | 変数 | 説明 | 確証ステータス |
 |---|---|---|
 | `${CLAUDE_PLUGIN_ROOT}` | plugin installation root | **[実機検証済]** skill template として展開され、claude に流入する本文には絶対パスが入る。bash env としては流入しない (= bash で `echo $CLAUDE_PLUGIN_ROOT` は空)。**mid-session で plugin update した場合は `/reload-plugins` まで古い version path を指す** |
-| `${CLAUDE_PLUGIN_DATA}` | plugin data dir (`~/.claude/plugins/data/<id>/`) | [spec 明示] plugin update で保持される (= 永続 state はここに置く) |
-| `${CLAUDE_SKILL_DIR}` | skill SKILL.md のあるディレクトリ (plugin skill なら skill subdir、not plugin root) | [spec 明示] supporting file 参照に使う、cwd 非依存 |
-| `${CLAUDE_PROJECT_DIR}` | project root | [spec 明示] |
-| `${CLAUDE_SESSION_ID}` | session UUID v4 | [spec 明示] |
-| `${CLAUDE_EFFORT}` | current effort level | [spec 明示] |
-| `${ENV_VAR}` | 任意 env 変数 | [spec 明示] `${HOME}` 等 |
-| `${user_config.*}` | plugin.json `userConfig` 値 (plugin 限定) | [spec 明示] |
+| `${CLAUDE_PLUGIN_DATA}` | plugin data dir (`~/.claude/plugins/data/<id>/`) | [spec] plugin update で保持される (= 永続 state はここに置く) |
+| `${CLAUDE_SKILL_DIR}` | skill SKILL.md のあるディレクトリ (plugin skill なら skill subdir、not plugin root) | [spec] supporting file 参照に使う、cwd 非依存 |
+| `${CLAUDE_PROJECT_DIR}` | project root | [spec] |
+| `${CLAUDE_SESSION_ID}` | session UUID v4 | [spec] |
+| `${CLAUDE_EFFORT}` | current effort level | [spec] |
+| `${ENV_VAR}` | 任意 env 変数 | [spec] `${HOME}` 等 |
+| `${user_config.*}` | plugin.json `userConfig` 値 (plugin 限定) | [spec] |
 
 ### 4.3 重要な実機検証結果
 
@@ -88,7 +88,7 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | 経路 | 展開される? |
 |---|---|
 | SKILL.md template (= claude runtime が読む時) | ✓ [実機検証済 (cmux-msg v0.28.13)] |
-| Hook command 内 (= shell env として) | ✓ [spec 明示]、`${CLAUDE_PLUGIN_ROOT}` が env var として hook process に inject |
+| Hook command 内 (= shell env として) | ✓ [spec]、`${CLAUDE_PLUGIN_ROOT}` が env var として hook process に inject |
 | Skill から呼ばれた bash 内 (= bash env として) | **✗** [実機検証済] bash で `echo $CLAUDE_PLUGIN_ROOT` は空 — ただし SKILL.md template で展開済の絶対パスが本文に入るので、Skill 経由なら問題なし |
 
 **Skill 経由で plugin bin を叩く正解パターン**:
@@ -111,13 +111,13 @@ skill 本文中で `!`command`` または ` ```! ` fenced block を書くと、*
 ## 上記を踏まえて...
 ```
 
-[spec 明示]
+[spec]
 
 ### 制約
 
 - 先頭行 or whitespace 直後のみ認識 (= `KEY=!`cmd`` は literal 扱い)
 - **substitution は 1 pass** — command output が `!`...`` を含んでも 2 次展開なし
-- Policy で disable 可: `disableSkillShellExecution: true` → `[shell command execution disabled by policy]` に置換 (= bundled & managed skills は exempt) [spec 明示]
+- Policy で disable 可: `disableSkillShellExecution: true` → `[shell command execution disabled by policy]` に置換 (= bundled & managed skills は exempt) [spec]
 - shell は `shell: bash` (default) / `powershell` を frontmatter で選択
 - 複数行 command は ` ```! ` fenced block で
 
@@ -130,7 +130,7 @@ skill 本文中で `!`command`` または ` ```! ` fenced block を書くと、*
 | `user-invocable: false` | ✗ | ✓ | ✓ (description のみ、`/` menu 非表示) | description: 常時、本文: invoke 時 |
 | 両方 true & false | ✗ | ✗ | ✗ | (実質無効) |
 
-[spec 明示]
+[spec]
 
 **実機検証 (cmux-msg)**:
 - `disable-model-invocation: true` を付けた 6 user skill (`/cmux-msg-peers` 等) は **AI の system-reminder available skills 一覧に出てこない** (= description 含めて context 食わない) → ユーザ専用 slash command として最適 [実機検証済]
@@ -139,8 +139,8 @@ skill 本文中で `!`command`` または ` ```! ` fenced block を書くと、*
 ## 7. Skill content lifecycle
 
 - skill invocation 時、本文が **single message として会話に挿入**
-- その後 同 turn では skill file を re-read しない (= 「standing instructions」として書く、one-time steps だと忘れられる) [spec 明示]
-- compaction で会話が圧縮された場合、invoked skill は最初の 5,000 token まで re-attach (= 複数 skill 時は combined budget 25,000 token、優先度は最近 invoke 順) [spec 明示]
+- その後 同 turn では skill file を re-read しない (= 「standing instructions」として書く、one-time steps だと忘れられる) [spec]
+- compaction で会話が圧縮された場合、invoked skill は最初の 5,000 token まで re-attach (= 複数 skill 時は combined budget 25,000 token、優先度は最近 invoke 順) [spec]
 - skill が context から drop されたら **再 invoke** で再度 load
 
 ## 8. Skill cache の reload 挙動 (実機検証)
@@ -171,7 +171,7 @@ Research $ARGUMENTS:
 - `agent: Explore` (read-only)、`Plan` (planning)、`general-purpose` (default、CLAUDE.md load)、custom `.claude/agents/<name>.md`
 - 結果 summary だけ parent に return
 
-[spec 明示]
+[spec]
 
 ## 10. settings.json での skill override
 
@@ -191,7 +191,7 @@ Research $ARGUMENTS:
 | `user-invocable-only` | hidden | yes |
 | `off` | hidden | hidden |
 
-[spec 明示]
+[spec]
 
 ## 11. 参考 URL (出典)
 

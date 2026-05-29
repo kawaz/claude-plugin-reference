@@ -29,7 +29,8 @@ skills/claude-plugin-reference/
 └── reference/
     ├── distribution.md         # 配布編 (plugin.json / marketplace.json / 配布フロー / version bump)
     ├── hooks.md                # フック編 (全 Hook event 一覧 / matcher / JSON input/output / blockable / 強制力)
-    └── skills.md               # スキル編 (SKILL.md frontmatter / string substitution / Dynamic Context Injection / invocation 制御)
+    ├── skills.md               # スキル編 (SKILL.md frontmatter / string substitution / Dynamic Context Injection / invocation 制御)
+    └── agents.md               # エージェント編 (agents field / agent frontmatter / 名前空間 / スコープ / 起動方法 / plugin agent の制限)
 ```
 
 ## 記述ポリシー

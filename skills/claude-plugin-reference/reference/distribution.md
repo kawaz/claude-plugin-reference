@@ -1,84 +1,101 @@
 # 配布編 — plugin.json / marketplace.json / 配布フロー
 
-kawaz/* で 1 plugin 配布する時の 2 manifest 最小テンプレ + 配布手順 + 参考 URL。詳細 spec は出典先参照。
+## マニフェストファイルの作成
+plugin を配布するにはリポジトリ内の以下の2つのパスにマニフェストファイルを配置する。
 
-## plugin.json (`.claude-plugin/plugin.json`)
+- [.claude-plugin/marketplace.json](../../../.claude-plugin/marketplace.json)
+- [.claude-plugin/plugin.json](../../../.claude-plugin/plugin.json)
 
-```json
-{
-  "name": "<plugin-name>",
-  "description": "<short description>",
-  "version": "<semver>",
-  "author": { "name": "kawaz" },
-  "license": "MIT",
-  "repository": "https://github.com/kawaz/<repo>"
-}
-```
+このプラグインのマニフェストファイルが最小テンプレとして使えます。
+触るのは `name` / `description` / `version` / `repository` の 4 field。残り固定でOK。
 
-触るのは `name` / `description` / `version` / `repository` の 4 field。残り固定。[spec 明示]
-
-## marketplace.json (`.claude-plugin/marketplace.json`)
-
-```json
-{
-  "name": "<plugin-name>",
-  "owner": { "name": "kawaz" },
-  "metadata": {
-    "description": "<short description>",
-    "version": "<semver>",
-    "license": "MIT"
-  },
-  "plugins": [
-    {
-      "name": "<plugin-name>",
-      "description": "<plugin description>",
-      "source": "./"
-    }
-  ]
-}
-```
-
-1 plugin 配布なら `source: "./"` 固定 (= marketplace.json 自身がいる plugin root を指す)。[spec 明示]
-
-`metadata.license` field は `claude plugin validate .` で「Unknown field 'license'」warning が出るが、公式 spec 上は OK な field (= validator の認識ズレ、無視可)。[実機検証済 / 既知 warning]
-
-## ユーザ install 手順 (README に書く 2 コマンド)
+## README に install/update　手順を記載
 
 ```
-claude plugin marketplace add kawaz/<repo>
-claude plugin install <plugin-name>@<plugin-name>
+# インストール手順
+claude plugin marketplace add <user>/<repo>
+claude plugin install <plugin-name>@<marketplace-name>
 ```
 
-具体例 (cmux-msg):
-
 ```
-claude plugin marketplace add kawaz/claude-cmux-msg
-claude plugin install cmux-msg@cmux-msg
-```
-
-## ユーザ update 手順
-
-```
-claude plugin marketplace update <plugin-name>
-claude plugin update <plugin-name>@<plugin-name>
+# アップデート手順
+claude plugin marketplace update <marketplace-name>
+claude plugin update <plugin-name>@<marketplace-name>
 ```
 
-## 開発者の version bump + push (kawaz の運用)
+実例サンプル: [README.md](../../../README.md)
 
-`just push` task に集約:
-1. `just bump-version` で 3 ファイル (`plugin.json` + `marketplace.json.metadata.version` + `package.json`) を semver 同期 bump
-2. `jj git push --bookmark main` で publish
-3. `claude plugin marketplace update <name>` で marketplace 側の cache 更新
-4. `claude plugin update <plugin>@<market>` で plugin 本体 cache 更新
+## version 管理ワークフロー (justfile, jj/git 両対応) [実機検証済]
 
-push 後の `/reload-plugins` (= ユーザ側 interactive command) で session 内 cache を切り替えるまで、既存 session の Skill / hook 解決先は古い cache を見続ける。[実機検証済]
+実際にこのリポで動かしている justfile。`jj/git push` 直叩きは push-guard hook が block するので、
+品質ゲートを通すこの task 経由で push する。`<plugin-name>` / `<marketplace-name>` は自分のに置換。
+
+```justfile
+# jj/git 判定
+is-jj := path_exists('.jj')
+is-git := if is-jj == "true" { "false" } else { path_exists('.git') }
+
+# bump trigger 対象 = plugin の配布物 (md が本体なので skills/ も含める。docs/ 等の開発メタは対象外)
+bump-trigger-paths := "skills/ README.md"
+# version を持つ manifest (bump-semver の対象)
+version-files := ".claude-plugin/plugin.json .claude-plugin/marketplace.json"
+
+push: ensure-clean check-version-bumped
+    jj bookmark set main -r @-
+    jj git push --bookmark main --allow-new
+    # push 成功後はローカル環境も更新
+    claude plugin marketplace update <marketplace-name>
+    claude plugin update <plugin-name>@<marketplace-name>
+
+# version bump 専用の Release commit を作る (push は別途 `just push`)
+bump-version bump="patch": ensure-clean
+    new_version=$(bump-semver {{ bump }} {{ version-files }} --write --no-hint) && jj commit -m "Release v${new_version}"
+
+version:
+    @bump-semver get {{ version-files }} --no-hint
+
+validate:
+    claude plugin validate .
+
+# --- internal recipes (push の依存) ---
+
+# uncommitted change がない (= @ が empty change) ことを要求
+ensure-clean:
+    if {{ is-jj }}; then [ "$(jj log -r @ --no-graph -T 'empty')" = "true" ]; fi
+    if {{ is-git }}; then [ -z "$(git status --porcelain)" ]; fi
+
+# bump-trigger-paths に変更があるのに version 据え置きの事故を防ぐ
+check-version-bumped:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if {{ is-jj }}; then
+      diff_out=$(jj diff -r 'main@origin..@' --summary -- {{ bump-trigger-paths }}) || { echo 'ERROR: jj diff failed (main@origin 未 track? 先に jj git fetch)' >&2; exit 1; }
+      [ -z "$diff_out" ] && exit 0
+    elif {{ is-git }}; then
+      git diff --quiet origin/main -- {{ bump-trigger-paths }} && exit 0
+    fi
+    bump-semver compare gt .claude-plugin/plugin.json vcs:main@origin:.claude-plugin/plugin.json --no-hint && exit 0
+    echo 'ERROR: 配布物が変わってるが version 未 bump。"just bump-version" を実行' >&2
+    exit 1
+```
+
+### 運用フロー [実機検証済]
+
+1. **内容を commit** (version 据え置き): `jj commit -m "..."`
+2. **`just bump-version`** — `ensure-clean` (@ が empty) を確認 → version を `--write` で上げ、`Release vX.Y.Z` commit を独立で作る
+3. **`just push`** — `ensure-clean` + `check-version-bumped` を通過 → `main` bookmark を `@-` (= Release commit) に set → push → ローカルの marketplace/plugin も更新
+
+ポイント:
+
+- **Release commit を内容 commit と分離**: `bump-version` が version-files だけの commit を独立で作る。`push` が `main` を `@-` に置くので、内容 commit も祖先として一緒に push される。
+- **`ensure-clean` が @ empty を要求**: jj は working copy が自動 commit 化されるため、未コミット変更の有無を「@ が empty change か」で判定する。
+- **`check-version-bumped`**: `bump-trigger-paths` (= 配布物) が `main@origin` から変わっているのに version が上がっていなければ fail。`docs/` 等の開発メタだけの変更では bump 不要。
+- 既存セッションへの反映は `/reload-plugins` をユーザに依頼する (marketplace/plugin update はキャッシュ更新まで)。
 
 ## version 管理
 
-- `version` field を plugin.json or `marketplace.json.plugins[].version` に設定済 → その文字列に pin、ユーザは version 変更時のみ更新通知 [spec 明示]
-- 未設定 → git commit SHA fallback (= 毎 commit が新 version 扱い) [spec 明示]
-
-kawaz は前者 (= 明示 version) で運用。
+- plugin.json に `version` 設定済 → その文字列に pin、ユーザは version 変更時のみ更新通知 [spec]
+- 未設定 → git commit SHA fallback (= 毎 commit が新 version 扱い) [spec]
 
 ## 参考 URL (出典)
 

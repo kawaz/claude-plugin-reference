@@ -2,7 +2,7 @@
 
 cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス。各 event について「タイミング / 主要用途 / 何ができるか / JSON input/output schema」を整理。
 
-> `[spec 明示]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認 (TODO)、`[実装の副産物]` = spec 保証なしの挙動
+> `[spec]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認 (TODO)、`[実装の副産物]` = spec 保証なしの挙動
 
 ## 1. 配置と発見順序
 
@@ -10,14 +10,14 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 |---|---|---|
 | `~/.claude/settings.json` の `hooks` | user 全体 | × |
 | `.claude/settings.json` の `hooks` | project | ✓ (git 管理) |
-| `.claude/settings.local.json` の `hooks` | project local | × (gitignore) |
+| `.claude/settings.local.json` の `hooks` | project | × (gitignore) |
 | plugin の `hooks/hooks.json` | plugin enable 中 | ✓ (plugin bundle) |
 | skill / agent frontmatter の `hooks` | その component 有効期間中 | ✓ |
 | Managed policy settings | 組織全体 | (deny rule は常に優先) |
 
-複数 scope に同一 event があれば **並行実行** (= 一方が他方を上書きしない、merge)。[spec 明示]
+複数 scope に同一 event があれば **並行実行** (= 一方が他方を上書きしない、merge)。[spec]
 
-`PreToolUse` の permission decision が複数 hook で衝突した場合、**最も制限的な結果が勝つ** (`deny > ask > allow`)。[spec 明示]
+`PreToolUse` の permission decision が複数 hook で衝突した場合、**最も制限的な結果が勝つ** (`deny > ask > allow`)。[spec]
 
 ## 2. Hook event 一覧
 
@@ -147,7 +147,7 @@ tool 引数で filter:
 | `prompt` | `prompt`, `model` (default `haiku`) | 30s | claude に判断 |
 | `agent` | `prompt`, `maxTurns` | 60s | subagent 実行 |
 
-`UserPromptSubmit` event の hook は強制的に 30s に short-circuit。[spec 明示]
+`UserPromptSubmit` event の hook は強制的に 30s に short-circuit。[spec]
 
 ## 5. Hook process の env
 
@@ -235,7 +235,7 @@ tool 引数で filter:
 }
 ```
 
-詳細は event ごとに公式 docs (= `hooks.md`) 参照。[spec 明示]
+詳細は event ごとに公式 docs (= `hooks.md`) 参照。[spec]
 
 ## 7. JSON output schema + exit code
 
@@ -299,7 +299,7 @@ tool 引数で filter:
 | 3 | Hook `allow` | permission prompt skip、ただし deny rule は再チェック |
 | 4 | Permission prompt / auto-mode classifier | normal flow |
 
-= Hook は **policy として enforce 可能**、permission settings を override する形ではなく追加制約として動く。[spec 明示]
+= Hook は **policy として enforce 可能**、permission settings を override する形ではなく追加制約として動く。[spec]
 
 ## 9. 実装上の落とし穴 (実機検証 / 経験則)
 
@@ -342,8 +342,8 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-gua
 
 - **JSON output に shell profile の echo が混入** → invalid JSON、hook output 無視。`if [[ $- == *i* ]]; then echo ...; fi` で interactive-only guard を [実機検証推奨]
 - **hook command の wd は stdin の `cwd` と違う** → `cd "$cwd" && ...` で明示移動 [実機検証済 (cmux-msg)]
-- **多 hook の updatedInput 衝突** → 最後に finish した hook が勝つ (= deterministic order なし、coordinator hook を 1 つに集約推奨) [spec 明示]
-- **Stop hook の max 8 連続 block** → 9 回目で自動 continue、`stop_hook_active` field で判定可 [spec 明示]
+- **多 hook の updatedInput 衝突** → 最後に finish した hook が勝つ (= deterministic order なし、coordinator hook を 1 つに集約推奨) [spec]
+- **Stop hook の max 8 連続 block** → 9 回目で自動 continue、`stop_hook_active` field で判定可 [spec]
 
 ## 10. 比較マトリクス — IO field × event / exit code × event
 
@@ -376,7 +376,7 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-gua
 | `old_cwd` / `new_cwd` | `CwdChanged` | dir 変更 |
 | `mcp_server_name` | `Elicitation` / `ElicitationResult` | MCP server 名 |
 
-[spec 明示 / 一部未検証]
+[spec / 一部未検証]
 
 ### 10.2 Output JSON フィールド × event (= どの event でどの field が解釈されるか)
 
@@ -395,7 +395,7 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-gua
 | `hookSpecificOutput.retry` | `PermissionDenied` | `true` で tool call 再試行 |
 | `decision: "block"` + `reason` | `Stop` / `UserPromptSubmit` | turn 再開 (Stop) or turn 拒否 (UserPromptSubmit) |
 
-[spec 明示 / 一部未検証]
+[spec / 一部未検証]
 
 ### 10.3 Exit code × event (= 同 exit code でも event ごとに効果が変わる)
 
@@ -425,7 +425,7 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-gua
 
 `exit !0, !2` (= その他 exit code) は全 event 共通で **non-blocking warning**: stderr 1 行目が transcript に記録、execution 継続。
 
-[spec 明示 / 一部未検証]
+[spec / 一部未検証]
 
 ### 10.4 hook type × event (= prompt / agent hook が使える event)
 
