@@ -65,15 +65,18 @@ ensure-clean:
     if {{ is-git }}; then [ -z "$(git status --porcelain)" ]; fi
 
 # bump-trigger-paths に変更があるのに version 据え置きの事故を防ぐ
+# bump-semver vcs diff -q で jj/git 分岐を統一 (DR-0020, v0.20.0+)
 check-version-bumped:
     #!/usr/bin/env bash
     set -euo pipefail
-    if {{ is-jj }}; then
-      diff_out=$(jj diff -r 'main@origin..@' --summary -- {{ bump-trigger-paths }}) || { echo 'ERROR: jj diff failed (main@origin 未 track? 先に jj git fetch)' >&2; exit 1; }
-      [ -z "$diff_out" ] && exit 0
-    elif {{ is-git }}; then
-      git diff --quiet origin/main -- {{ bump-trigger-paths }} && exit 0
-    fi
+    # exit 0 = 変更なし → bump 不要 / 1 = 変更あり / 3 = VCS error
+    rc=0
+    bump-semver vcs diff -q main@origin -- {{ bump-trigger-paths }} || rc=$?
+    case "$rc" in
+      0) exit 0 ;;
+      1) ;;
+      *) echo "ERROR: bump-semver vcs diff failed (rc=$rc). main@origin 未 track? 先に 'jj git fetch' / 'git fetch'" >&2; exit 1 ;;
+    esac
     bump-semver compare gt .claude-plugin/plugin.json vcs:main@origin:.claude-plugin/plugin.json --no-hint && exit 0
     echo 'ERROR: 配布物が変わってるが version 未 bump。"just bump-version" を実行' >&2
     exit 1
@@ -89,7 +92,7 @@ check-version-bumped:
 
 - **Release commit を内容 commit と分離**: `bump-version` が version-files だけの commit を独立で作る。`push` が `main` を `@-` に置くので、内容 commit も祖先として一緒に push される。
 - **`ensure-clean` が @ empty を要求**: jj は working copy が自動 commit 化されるため、未コミット変更の有無を「@ が empty change か」で判定する。
-- **`check-version-bumped`**: `bump-trigger-paths` (= 配布物) が `main@origin` から変わっているのに version が上がっていなければ fail。`docs/` 等の開発メタだけの変更では bump 不要。
+- **`check-version-bumped`**: `bump-trigger-paths` (= 配布物) が `main@origin` から変わっているのに version が上がっていなければ fail。`docs/` 等の開発メタだけの変更では bump 不要。`bump-semver vcs diff -q` で jj/git 両対応 (DR-0020)、`--quiet` の exit code (0=変更なし / 1=変更あり / 3=VCS error) を case で分岐。
 - 既存セッションへの反映は `/reload-plugins` をユーザに依頼する (marketplace/plugin update はキャッシュ更新まで)。
 
 ## version 管理

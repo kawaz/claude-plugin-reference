@@ -44,16 +44,23 @@ ensure-clean:
 
 # bump-trigger-paths に変更があるなら version も bump されていることを確認
 # (plugin の本質的提供物 = skill 等 md が変わったのに version 据え置きの事故を防ぐ)
+# bump-semver vcs diff -q で jj/git 分岐を統一 (DR-0020, v0.20.0+)
+# Design rationale: 旧 jj 分岐は `|| exit 1` で fetch 漏れを区別していたが、
+# bump-semver vcs diff の exit code 3 (VCS error) を捕まえて同じ区別を維持する。
+# `|| rc=$?` で set -e を回避しつつ rc を保存。
 check-version-bumped:
     #!/usr/bin/env bash
     set -euo pipefail
-    # 変更なしなら早期 return (success)
-    if {{ is-jj }}; then
-      diff_out=$(jj diff -r 'main@origin..@' --summary -- {{ bump-trigger-paths }}) || { echo 'ERROR: jj diff failed (main@origin not tracked? run jj git fetch first)' >&2; exit 1; }
-      [ -z "$diff_out" ] && exit 0
-    elif {{ is-git }}; then
-      git diff --quiet origin/main -- {{ bump-trigger-paths }} && exit 0
-    fi
+    # exit 0 = bump-trigger-paths に変更なし → bump 不要
+    # exit 1 = 変更あり → version bump 済みかチェックに進む
+    # exit 3 = VCS error (main@origin 未 track 等)
+    rc=0
+    bump-semver vcs diff -q main@origin -- {{ bump-trigger-paths }} || rc=$?
+    case "$rc" in
+      0) exit 0 ;;
+      1) ;;
+      *) echo "ERROR: bump-semver vcs diff failed (rc=$rc). main@origin が track されていない可能性。先に 'jj git fetch' / 'git fetch' を試してください" >&2; exit 1 ;;
+    esac
     # バージョン更新済みなら success
     bump-semver compare gt .claude-plugin/plugin.json vcs:main@origin:.claude-plugin/plugin.json --no-hint && exit 0
     echo 'ERROR: bump-trigger-paths が変わってるが version 未 bump。"just bump-version" を実行してください' >&2
