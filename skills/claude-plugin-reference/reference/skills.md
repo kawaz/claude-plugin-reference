@@ -8,11 +8,15 @@
 |---|---|---|
 | `~/.claude/skills/<name>/SKILL.md` | directory 名 | `/summarize-changes` |
 | `.claude/skills/<name>/SKILL.md` | directory 名 (project scope) | |
-| `.claude/commands/<name>.md` (legacy 互換) | filename | `/deploy` (= commands は skills に統合済、新規は skills/) |
+| `.claude/commands/<name>.md` (custom slash command files; project scope) | filename | `/deploy`、`/itumono-nonstop` 等 |
+| `~/.claude/commands/<name>.md` (同上; user scope) | filename | 同上 |
 | `<plugin>/skills/<name>/SKILL.md` | `<plugin>:<name>` | `/cmux-msg:cmux-msg-list` |
+| `<plugin>/commands/<name>.md` | `<plugin>:<name>` | `/codex:setup`、`/codex:review` — 詳細は [commands.md](commands.md) |
 | `<plugin>/SKILL.md` (plugin root) | frontmatter `name` or plugin 名 | `/cmux-msg:cmux-msg` |
 
-= **plugin name と同 skill 名 (= plugin root の SKILL.md or `skills/<plugin-name>/SKILL.md`) は UI 補完で `/<plugin>:<plugin>` 形式の full namespace 表示**、それ以外の skill は `/<short-name>` + `(<plugin>)` suffix で短縮表示 [実機検証済 (cmux-msg)]
+= **補完表示は常に `/<plugin>:<name>` の namespace 付き**。bare 名 (= `/setup` 等) フォールバックは現バージョンでは無効 [実機検証済 2026-06-02 (codex / gh-monitor plugin)]。短い一般名 (= `read` / `list` / `status` 等) を skill 名にしても他 plugin とのコンフリクトリスクなし。
+
+[実機検証済 (cmux-msg)] plugin root の SKILL.md (or `skills/<plugin-name>/SKILL.md` = plugin 名と同 skill 名) は補完上 `/<plugin>:<plugin>` 形式で表示される。これは「`/<plugin>` で始まる短縮形がそのまま plugin と同名 skill を指す」スタイルで、display renderer が冗長 prefix を collapse している可能性 (= 未確定、要追加検証)。
 
 ## 2. Skill folder 内の supporting files
 
