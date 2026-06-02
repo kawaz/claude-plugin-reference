@@ -14,9 +14,21 @@
 | `<plugin>/commands/<name>.md` | `<plugin>:<name>` | `/codex:setup`、`/codex:review` — 詳細は [commands.md](commands.md) |
 | `<plugin>/SKILL.md` (plugin root) | frontmatter `name` or plugin 名 | `/cmux-msg:cmux-msg` |
 
-= **補完表示は常に `/<plugin>:<name>` の namespace 付き**。bare 名 (= `/setup` 等) フォールバックは現バージョンでは無効 [実機検証済 2026-06-02 (codex / gh-monitor plugin)]。短い一般名 (= `read` / `list` / `status` 等) を skill 名にしても他 plugin とのコンフリクトリスクなし。
+### 補完表示ルール [実機検証済 2026-06-02 (cmux-msg / gh-monitor / codex)]
 
-[実機検証済 (cmux-msg)] plugin root の SKILL.md (or `skills/<plugin-name>/SKILL.md` = plugin 名と同 skill 名) は補完上 `/<plugin>:<plugin>` 形式で表示される。これは「`/<plugin>` で始まる短縮形がそのまま plugin と同名 skill を指す」スタイルで、display renderer が冗長 prefix を collapse している可能性 (= 未確定、要追加検証)。
+候補文字列は常に canonical な `/<plugin>:<name>`。bare 名 (= `/list` 等) でのフォールバック candidate は無い (= namespace 必須)。表示時に renderer が以下 3 パターンで分岐する:
+
+| 条件 | 表示 | 例 |
+|---|---|---|
+| `name` が `plugin` と **完全一致** | full `/<plugin>:<plugin>` (= `/<plugin>` 単独だと plugin 起動と曖昧なため回避) | `/cmux-msg:cmux-msg` |
+| `name` が `plugin` を **prefix に持つ** (≠ 完全一致) | 短縮 `/<name>` + `(<plugin>)` suffix (= 冗長 prefix `<plugin>:` を collapse) | `/cmux-msg-list` `(cmux-msg)` |
+| `name` が `plugin` を prefix に持たない | full `/<plugin>:<name>` + `(<plugin>)` suffix | `/gh-monitor:watch-pr`, `/codex:setup` |
+
+**含意 (= 命名規約として使える)**:
+- skill 名を plugin 名 prefix で揃える (= `cmux-msg-list`, `cmux-msg-read`) と、補完で短縮形 `/cmux-msg-list` が打てる (= UX 良好、cmux-msg が採用している規約)
+- plugin 名と無関係な短い名前 (= `watch-pr`) は full namespace `/gh-monitor:watch-pr` になる。一般語の skill 名でも namespace 必須なので **他 plugin とのコンフリクトリスクは無い**が、補完では常に `<plugin>:` prefix を打つ必要がある
+- 補完マッチングは **表示文字列 (full or 短縮) に対して**行われる。`/statu` で `/codex:status` が候補に出るのは full 表示内の `status` 部分マッチ
+- これは現バージョンの実機挙動。公式 spec で保証された UI 仕様ではないため、将来版での再確認は推奨
 
 ## 2. Skill folder 内の supporting files
 

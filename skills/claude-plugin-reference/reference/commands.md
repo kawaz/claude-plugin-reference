@@ -60,17 +60,17 @@ skill との frontmatter 差分:
 
 ## 4. 補完表示の挙動 (実機検証)
 
-**少なくとも 2026-06-02 時点の codex / gh-monitor 実機**では、スラッシュ補完の表示は `/<plugin>:<command>` の namespace 付きで、bare 名 (= `/setup` 等) フォールバックは観測されない [実機検証済 2026-06-02]。これは公式 spec で保証された挙動ではないので、将来 Claude Code 版で挙動が変わる可能性は残る (= 再検証推奨)。
+command の補完表示も skill と同じ 3 パターンルールに従う ([skills.md §1 の補完表示ルール](skills.md#1-skillmd-の配置パターン)参照)。command 名は plugin 名 prefix を持たないことが多いので (= `setup`, `review`, `status`)、多くは full namespace `/<plugin>:<name>` 表示になる。
 
-具体例:
-- `/codex` 補完 → `/codex:setup` `/codex:status` `/codex:rescue` `/codex:review` `/codex:cancel` `/codex:adversarial-review` (= 全 namespace 付き)
-- `/status` 補完 → `/status` (built-in), `/statusline`, `/codex:status`, `/ide`, `/usage`。bare `/status` で codex 側は引っ掛からない (= 観測時点)
-- `/watch` 補完 → `/gh-monitor:watch-pr` `/gh-monitor:watch-workflow` (= namespace 付きのみ)
+実機例 [実機検証済 2026-06-02]:
+- `/codex` 補完 → `/codex:setup` `/codex:status` `/codex:rescue` `/codex:review` `/codex:cancel` `/codex:adversarial-review` (= 全 full namespace、prefix 不一致)
+- `/statu` 補完 → `/status` (built-in), `/statusline`, `/codex:status` `(codex)`, `/usage`, `/ide`。bare `/status` で codex 側は **canonical 候補としては出ず**、full 表示 `/codex:status` 内の `status` 部分マッチで出る
+- `/gh-` 補完 → `/gh-monitor:watch-pr` `/gh-monitor:watch-workflow` (= namespace 付きのみ)
 
-**含意 (= 上記が現バージョンで継続する前提)**:
-- skill / command 名を `read` / `list` / `status` のような **短い一般名**にしても補完表示上の衝突リスクは低い
-- 過去に `read` という skill 名を避けて `cmux-msg-read` のように長くした動機 (= bare 名フォールバックでのコンフリクト懸念) は現バージョンでは緩和されている可能性が高い
-- ただし spec 保証ではないので、短い名前を使う場合は将来の Claude Code 版で動作再検証を推奨
+**含意**:
+- command / skill 名に `setup` / `status` のような **一般語**を使っても namespace 必須なのでコンフリクトしない
+- 逆に短縮形 `/<name>` で打たせたいなら、名前を plugin 名 prefix で揃える (= cmux-msg の `cmux-msg-list` 方式)。command でも同じ
+- これは現バージョンの実機挙動で spec 保証ではない (= 将来版で再確認推奨)
 
 ## 5. 書式の best practice (= 命令調 + 構造化)
 
