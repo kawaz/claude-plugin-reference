@@ -13,10 +13,15 @@ version-files := ".claude-plugin/plugin.json .claude-plugin/marketplace.json"
 
 # ---------- main tasks ----------
 
-push: ensure-clean check-version-bumped
+# push (バージョン bump 済みを前提、全 gate 通過後に push してローカルも更新)
+push: ensure-clean validate check-versions check-version-bumped
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
-    claude plugin marketplace update claude-plugin-reference
-    claude plugin update claude-plugin-reference@claude-plugin-reference
+    @just _local-plugin-reload
+
+# push (ドキュメント更新等のみで bump 不要な場合)
+push-without-bump: ensure-clean validate check-versions
+    bump-semver vcs push --branch main --jj-bookmark-auto-advance
+    @just _local-plugin-reload
 
 # version を bump して Release commit を作成 (push は別途 `just push`)
 [script]
@@ -37,6 +42,22 @@ validate:
 # uncommitted change がない状態か確認 (git/jj-agnostic, DR-0020)
 ensure-clean:
     bump-semver vcs is clean
+
+# plugin.json と marketplace.json の version 一致を保証 (multi-file 整合性)。
+# bump-semver get は multi-file 時に内部で整合チェック (不一致は error 表示で exit 非 0)。
+[private]
+check-versions:
+    @bump-semver get {{ version-files }} --no-hint >/dev/null
+
+# push 成功直後の local 反映: 現セッションの marketplace + plugin を update し、
+# /reload-plugins 依頼まで出す。push して終わりだと local Claude は古い plugin で
+# 動き続けるため、push task に embed して仕組みで強制する。
+[private]
+_local-plugin-reload:
+    claude plugin marketplace update claude-plugin-reference
+    claude plugin update claude-plugin-reference@claude-plugin-reference
+    @echo ""
+    @echo "[hint] /reload-plugins to apply in this session without restart"
 
 # bump-trigger-paths に変更があるなら version も bump されていることを確認
 # (plugin の本質的提供物 = skill 等 md が変わったのに version 据え置きの事故を防ぐ)
