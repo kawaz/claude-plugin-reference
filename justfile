@@ -3,10 +3,6 @@
 
 # ---------- variables ----------
 
-# jj/git 判定 (cmux-msg justfile と同じ pattern)
-is-jj := path_exists('.jj')
-is-git := if is-jj == "true" { "false" } else { path_exists('.git') }
-
 # bump trigger 対象 = plugin 配布物 (skill / README) の変更
 # = これらが変更されていれば bump-version 忘れずに必要 ('docs/' 等の開発メタは対象外)
 # plugin プロジェクトは本質的提供物が md なので skills/ も bump trigger に含める
@@ -18,14 +14,15 @@ version-files := ".claude-plugin/plugin.json .claude-plugin/marketplace.json"
 # ---------- main tasks ----------
 
 push: ensure-clean check-version-bumped
-    jj bookmark set main -r @-
-    jj git push --bookmark main --allow-new
+    bump-semver vcs push --branch main --jj-bookmark-auto-advance
     claude plugin marketplace update claude-plugin-reference
     claude plugin update claude-plugin-reference@claude-plugin-reference
 
 # version を bump して Release commit を作成 (push は別途 `just push`)
+[script]
 bump-version bump="patch": ensure-clean
-    new_version=$(bump-semver {{ bump }} {{ version-files }} --write --no-hint) && jj commit -m "Release v${new_version}"
+    new_version=$(bump-semver {{ bump }} {{ version-files }} --write --no-hint)
+    bump-semver vcs commit -m "Release v${new_version}" {{ version-files }}
 
 # 現在の version を確認
 version:
@@ -37,10 +34,9 @@ validate:
 
 # ---------- internal recipes (push の依存) ----------
 
-# uncommitted change がない状態か確認 (= @ が empty change)
+# uncommitted change がない状態か確認 (git/jj-agnostic, DR-0020)
 ensure-clean:
-    if {{ is-jj }}; then [ "$(jj log -r @ --no-graph -T 'empty')" = "true" ]; fi
-    if {{ is-git }}; then [ -z "$(git status --porcelain)" ]; fi
+    bump-semver vcs is clean
 
 # bump-trigger-paths に変更があるなら version も bump されていることを確認
 # (plugin の本質的提供物 = skill 等 md が変わったのに version 据え置きの事故を防ぐ)
