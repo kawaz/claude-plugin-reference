@@ -3,7 +3,7 @@
   "owner": { "name": "kawaz" },
   "metadata": {
     "description": "Claude Code plugin / skill / hooks の実機検証込みリファレンス",
-    "version": "0.2.0"
+    "version": "0.2.1"
   },
   "plugins": [
     {

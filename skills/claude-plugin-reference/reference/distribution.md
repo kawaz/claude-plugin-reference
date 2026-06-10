@@ -51,7 +51,7 @@ set positional-arguments
 # push (バージョン bump 済みを前提、全 gate 通過後に push してローカルも更新)
 push: ensure-clean validate check-versions check-version-bumped
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
-    @just _local-plugin-reload
+    just on-success-release
 
 # version を bump して Release commit を作成 (push は別途 `just push`)
 [script]
@@ -78,9 +78,9 @@ ensure-clean:
 check-versions:
     @bump-semver get .claude-plugin/plugin.json .claude-plugin/marketplace.json --no-hint >/dev/null
 
-# push 成功直後の local 反映 (CI 無しリポの canonical: push task に embed して仕組みで強制)
-[private]
-_local-plugin-reload:
+# release 成功後の local 反映 (慣習名 on-success-release)。
+# CI 無しリポは "release = push 完了" なので push から直接呼ぶ。
+on-success-release:
     claude plugin marketplace update claude-plugin-reference
     claude plugin update claude-plugin-reference@claude-plugin-reference
     @echo "[hint] /reload-plugins to apply in this session without restart"
@@ -109,7 +109,7 @@ _check-version-bumped *target_paths:
 
 1. **内容を commit** (version 据え置き): `jj commit -m "..."`
 2. **`just bump-version`** — `ensure-clean` を確認 → version を `--write` で上げ、`Release vX.Y.Z` commit を独立で作る
-3. **`just push`** — gate を通過 → `bump-semver vcs push --jj-bookmark-auto-advance` が `main` を進めて push → `_local-plugin-reload` が marketplace/plugin を update
+3. **`just push`** — gate を通過 → `bump-semver vcs push --jj-bookmark-auto-advance` が `main` を進めて push → `on-success-release` が marketplace/plugin を update
 
 ポイント:
 
@@ -117,7 +117,7 @@ _check-version-bumped *target_paths:
 - **bookmark 前進は `bump-semver vcs push --jj-bookmark-auto-advance` に委譲** (DR-0026): jj の `@-` (= 直近の Release commit) に `main` を自動追従させる。手書きの `jj bookmark set main -r @-` は不要。
 - **`ensure-clean` が @ empty を要求**: jj は working copy が自動 commit 化されるため、`bump-semver vcs is clean` が「@ が empty change か」で判定する。
 - **`check-version-bumped`**: 配布物 (= bump-trigger) が `main@origin` から変わっているのに version が上がっていなければ fail。`docs/` / `justfile` 等だけの変更では bump 不要。
-- **local 反映を push に embed**: push して終わりだと現セッションの Claude は古い plugin cache で動き続ける。`_local-plugin-reload` を push task に組み込んで「仕組みで強制」する。既存セッションへの適用は `/reload-plugins` をユーザに依頼 (update はキャッシュ更新まで)。
+- **local 反映を push から呼ぶ**: push して終わりだと現セッションの Claude は古い plugin cache で動き続ける。`on-success-release` を push から呼んで「仕組みで強制」する (CI 無しリポは push 完了 = release 成功なので即実行)。既存セッションへの適用は `/reload-plugins` をユーザに依頼 (update はキャッシュ更新まで)。
 
 #### CI があるリポの場合 (= push 直後に update できない)
 
@@ -126,16 +126,16 @@ artifact を作る前なので早すぎる。その場合は push に inline せ
 `gh-monitor:watch-workflow` の `--on-success <workflow> 'just on-success-release'` で **CI green 後に**
 update を発火させる。
 
-この「push → watch → CI green → on-success-release」パターンの**大元は kawaz/bump-semver の justfile**
+この「push → watch → CI green → on-success-release」パターンの**参考実装は kawaz/bump-semver の justfile**
 (`push` が watch-workflow ヒントを echo → `on-success-release` で `brew upgrade`)。kawaz/claude-gh-monitor は
 これを plugin の `claude plugin update` に適用した例 (やっていることは同じ)。
 
 | リポ種別 | local 反映の置き場所 | 発火タイミング |
 |---|---|---|
-| CI 無し (hook / skill のみ) | push recipe に inline (`_local-plugin-reload`) | push 直後 |
-| CI あり (release.yml で artifact) | `on-success-release` 別 recipe | `watch-workflow --on-success` 経由、CI green 後 |
+| CI 無し (hook / skill のみ) | `on-success-release` recipe を push から直接呼ぶ | push 直後 |
+| CI あり (release.yml で artifact) | `on-success-release` recipe を watch 経由で呼ぶ | `watch-workflow --on-success` 経由、CI green 後 |
 
-実装例: **kawaz/bump-semver** (大元、`brew upgrade`) / **kawaz/claude-gh-monitor** (plugin update 適用)。
+参考実装: **kawaz/bump-semver** (`brew upgrade`) / **kawaz/claude-gh-monitor** (plugin update 適用)。
 
 ## version 管理
 

@@ -10,7 +10,7 @@ set positional-arguments
 # push (バージョン bump 済みを前提、全 gate 通過後に push してローカルも更新)
 push: ensure-clean validate check-versions check-version-bumped
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
-    @just _local-plugin-reload
+    just on-success-release
 
 # version を bump して Release commit を作成 (push は別途 `just push`)
 [script]
@@ -38,11 +38,8 @@ ensure-clean:
 check-versions:
     @bump-semver get .claude-plugin/plugin.json .claude-plugin/marketplace.json --no-hint >/dev/null
 
-# push 成功直後の local 反映: 現セッションの marketplace + plugin を update し、
-# /reload-plugins 依頼まで出す。push して終わりだと local Claude は古い plugin で
-# 動き続けるため、push task に embed して仕組みで強制する (= CI 無しリポの canonical)。
-[private]
-_local-plugin-reload:
+# release 成功後の local 反映: marketplace + plugin を update (CI 無しは push から直接 / CI ありは watch 経由)
+on-success-release:
     claude plugin marketplace update claude-plugin-reference
     claude plugin update claude-plugin-reference@claude-plugin-reference
     @echo ""
