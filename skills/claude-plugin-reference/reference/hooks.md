@@ -324,8 +324,8 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh]: BLOCK: 
 }
 ```
 
-- bash shell-form では `#` 以降が comment 扱い = script 実行に影響しない [実機検証推奨]
-- claude runtime の error 表示は literal の command string をそのまま出すので、`#push-guard` が見える = plugin 名を識別可
+- bash shell-form では `#` 以降が comment 扱い = script 実行に影響しない [実機検証済: kawaz/claude-push-guard v0.3.1 / 本リポの SessionStart hook で配備、block/inject とも正常動作]
+- claude runtime の error 表示は literal の command string をそのまま出すので、`#push-guard` が見える = plugin 名を識別可 [error ヘッダ表示部分は実 block を踏んでの目視確認が TODO]
 
 ```
 PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-guard]: BLOCK: ...

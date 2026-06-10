@@ -30,8 +30,16 @@ skills/claude-plugin-reference/
     ├── distribution.md         # 配布編 (plugin.json / marketplace.json / 配布フロー / version bump)
     ├── hooks.md                # フック編 (全 Hook event 一覧 / matcher / JSON input/output / blockable / 強制力)
     ├── skills.md               # スキル編 (SKILL.md frontmatter / string substitution / Dynamic Context Injection / invocation 制御)
+    ├── commands.md             # コマンド編 (commands/*.md の役割 / 書式 / skills との使い分け / 3 軸構造)
     └── agents.md               # エージェント編 (agents field / agent frontmatter / 名前空間 / スコープ / 起動方法 / plugin agent の制限)
 ```
+
+## 提供する hook
+
+`SessionStart` フック (`hooks/plugin-repo-nudge.sh`) を 1 つ同梱。cwd の project root に
+`.claude-plugin/plugin.json` があれば「ここは plugin repo なので試行錯誤せず本 skill を参照せよ」と
+1 文だけ `additionalContext` で inject する (plugin repo 以外では沈黙)。plugin 開発で reference を
+見ずにトライ&エラーする事故を入口で防ぐのが狙い。
 
 ## 記述ポリシー
 
