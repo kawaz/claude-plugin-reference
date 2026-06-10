@@ -51,7 +51,7 @@ allowed-tools: Read, Glob, Grep, Bash(node:*), Bash(git:*), AskUserQuestion
 | `argument-hint` | string | 任意 | autocomplete hint | 例: `[--wait\|--background] [focus ...]` |
 | `disable-model-invocation` | bool | 任意 | true = AI 自動 invoke 不可、manual `/<plugin>:<name>` のみ | listing から description も削除 = AI context 食わない |
 | `allowed-tools` | string\|array | 任意 | このコマンド実行中に permission 無しで使える tool | turn 終了で clear |
-| `disallowed-tools` | string\|array | 任意 | このコマンド実行中に使えなくなる tool | 危険 tool 防止 |
+| `disallowed-tools` | string\|array | 任意 | このコマンド実行中に使えなくなる tool | 危険 tool 防止。skill と共通機構、実機挙動は [skills.md §6.1](skills.md#61-disallowed-tools-の実機挙動-実機検証済-v21170) ([実機検証済: v2.1.170]) |
 | `model` | string | 任意 | model override | `sonnet` / `opus` / `inherit` |
 
 skill との frontmatter 差分:
@@ -71,6 +71,14 @@ command の補完表示も skill と同じ 3 パターンルールに従う ([sk
 - command / skill 名に `setup` / `status` のような **一般語**を使っても namespace 必須なのでコンフリクトしない
 - 逆に短縮形 `/<name>` で打たせたいなら、名前を plugin 名 prefix で揃える (= cmux-msg の `cmux-msg-list` 方式)。command でも同じ
 - これは現バージョンの実機挙動で spec 保証ではない (= 将来版で再確認推奨)
+
+### 4.1 補完メニューでのクリック挙動 [未検証 (対話 UI 専用)]
+
+補完メニューで slash command を**クリックすると即実行されず、prompt 入力欄に挿入される**。実行するには Enter を押す。
+
+- 出典: CHANGELOG v2.1.162「Clicking a slash command in the autocomplete menu now fills it into your prompt instead of running it immediately; press Enter to run」
+- 対話 TUI 専用挙動のため headless (`claude -p`) では検証不可 → `[未検証]`、changelog 文言を出典として記載
+- 含意: 引数を要する command (= `argument-hint` 付き) でクリック後に引数を追記できる。`§3` の `argument-hint` がより活きる
 
 ## 5. 書式の best practice (= 命令調 + 構造化)
 

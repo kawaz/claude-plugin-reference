@@ -3,9 +3,7 @@ name: claude-plugin-reference
 description: Claude Code plugin / skill / hooks の実機検証込みリファレンス。
 ---
 
-> **最終チェック: Claude Code v2.1.170 (2026-06-10)**
-> (執筆時 v2.1.157〜161 からの changelog 差分を確認済み。実機検証 + 本体反映の backlog は
-> `docs/issue/2026-06-10-cc-2.1.170-maintenance.md`)
+> **最終検証: Claude Code v2.1.170 (2026-06-10)**
 
 `${CLAUDE_SKILL_DIR}/reference/` 配下を Read してください。
 
@@ -29,4 +27,5 @@ description: Claude Code plugin / skill / hooks の実機検証込みリファ�
    - 変わった挙動・新 event / 新 field / 新 frontmatter を **実機で検証**し、該当 reference ファイルを更新。検証した項目には `[実機検証済: vX.Y.Z]` を付与。
    - `[未検証]` TODO のうち現行で検証可能になったものを格上げ。
    - 冒頭の **最終検証** スタンプを現行バージョン + 当日日付に更新。
+   - 手順詳細 (issue 起票テンプレ / 検証ハーネス定型 / ハマり所) はリポ内 `docs/runbooks/cc-version-maintenance.md` を参照 (リポ checkout 内でのメンテ時のみ到達可)。
 4. 単に plugin 開発で参照しているだけ (= メンテ目的でない) なら、**告知のみ**で通常作業を続ける。

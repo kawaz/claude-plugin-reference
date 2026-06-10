@@ -25,9 +25,13 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 
 | event | matcher 値 | タイミング | 主要用途 | 何ができるか | blockable |
 |---|---|---|---|---|---|
-| `SessionStart` | `startup` / `resume` / `clear` / `compact` | session 開始 / resume / clear / compact 後 | env 初期化 / meta 書き込み / direnv 連携 | additionalContext で claude に文脈 inject | × (exit 2 は stderr 表示のみ) |
+| `SessionStart` | `startup` / `resume` / `clear` / `compact` | session 開始 / resume / clear / compact 後 | env 初期化 / meta 書き込み / direnv 連携 / skill 動的設置 | additionalContext で文脈 inject / `sessionTitle` で title 設定 / `reloadSkills:true` で skill 再スキャン (= §6.2、[実機検証済: v2.1.170]) | × (exit 2 は stderr 表示のみ) |
 | `SessionEnd` | (なし) | session 終了直前 | cleanup / 永続化 | (output 無視) | × |
+| `post-session` | (なし) | **session 終了後・workspace 削除前** (self-hosted runner 専用) | 未コミット成果の snapshot / log export | 子プロセスの SIGTERM→SIGKILL 猶予 (既定 5s) を設定可 | [未検証] |
 | `Setup` | `init` / `maintenance` | `--init-only` or `-p --init/--maintenance` 実行時 | 初期化処理 | (用途限定) | × |
+
+> **`post-session` (changelog 2.1.169) [未検証]**: self-hosted runner (CI runner 等) のライフサイクルで、session 終了 → workspace 削除の **間** に走る lifecycle hook。ローカル対話 / headless `claude -p` には「workspace 削除フェーズ」が存在しないため **構造的に実機検証不能** (= 個人環境では発火させられない)。公式 hooks reference (code.claude.com/docs/en/hooks.md) にも未記載で、出典は CHANGELOG 2.1.169 のみ。
+> **SessionEnd との差**: `SessionEnd` は session 終了「直前」に走り output は無視される汎用 cleanup フック。`post-session` は session 終了「後」かつ runner が workspace を破棄する「前」という self-hosted runner 限定のタイミングで、未コミット作業の退避 / ログ持ち出しと、子プロセス強制終了の猶予時間調整を目的とする。
 
 ### 2.2 ユーザ入力系
 
@@ -51,7 +55,7 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 
 | event | matcher | タイミング | 主要用途 | 何ができるか | blockable |
 |---|---|---|---|---|---|
-| `Stop` | (なし) | 毎 turn 終了直後 | task 完了確認 | `decision: "block"` + `reason` で turn 再開 (max 8 連続) | ✓ |
+| `Stop` | (なし) | 毎 turn 終了直後 | task 完了確認 | `decision: "block"` + `reason` で turn 再開 (max 8 連続)。または `hookSpecificOutput.additionalContext` で **hook error 扱いにせず** feedback 注入して会話継続 [実機検証済: v2.1.170] | ✓ |
 | `StopFailure` | (なし) | turn が API error で失敗 | エラー報告 | (output 無視) | × |
 | `Notification` | type (e.g. `permission_prompt`, `idle_prompt`, `auth_success`, `elicitation_dialog`) | notification 表示直前 | desktop 通知 / sound | terminalSequence で OSC 777 等 | × |
 
@@ -73,7 +77,7 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 | event | matcher | タイミング | 主要用途 | 何ができるか | blockable |
 |---|---|---|---|---|---|
 | `SubagentStart` | agent type | subagent spawn 直前 | log / 拒否 | [未検証] | [未検証] |
-| `SubagentStop` | agent type | subagent 終了直後 | result 加工 | [未検証] | [未検証] |
+| `SubagentStop` | agent type | subagent 終了直後 | result 加工 | `decision: "block"` + `reason` で subagent turn 再開、または `hookSpecificOutput.additionalContext` で feedback 注入し継続 (= Stop と同等)。発火は [実機検証済: v2.1.170]、additionalContext の注入先は subagent コンテキスト [spec] | ✓ [spec] (block での turn 再開は実機未確認) |
 | `TaskCreated` | (なし) | TaskCreate 生成直前 | task 監査 | [未検証] | [未検証] |
 | `TaskCompleted` | (なし) | task completion 直前 | result 確認 | [未検証] | [未検証] |
 | `TeammateIdle` | (なし) | teammate idle 状態 | スケジューリング | [未検証] | [未検証] |
@@ -87,9 +91,21 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 
 ### 2.8 その他
 
-| event | matcher | タイミング | 主要用途 | blockable |
-|---|---|---|---|---|
-| `MessageDisplay` | (なし) | assistant message text 表示中 | logging / streaming 介入 | [未検証] |
+| event | matcher | タイミング | 主要用途 | 何ができるか | blockable |
+|---|---|---|---|---|---|
+| `MessageDisplay` | (なし、常時発火) | assistant message text 表示直前 (streaming delta ごと + final) | logging / 表示テキストの transform・hide | `hookSpecificOutput.displayContent` で **画面表示のみ** 置換 (transcript と claude が見る本文は元のまま) [実機検証済: v2.1.170] | × (表示置換のみ、turn は止まらない) |
+
+`MessageDisplay` の stdin 固有フィールド [実機検証済: v2.1.170]:
+
+| field | 値 |
+|---|---|
+| `delta` | この発火で表示されるテキスト断片 (= streaming chunk または final 全文) |
+| `final` | bool。`true` なら message の最終表示 |
+| `index` | 同一 message 内の発火順序 |
+| `message_id` | 対象 assistant message の UUID |
+| `turn_id` | turn の UUID |
+
+`hookSpecificOutput.displayContent` を返すと headless `-p` の最終出力でも置換が反映される (= 表示パイプラインに効く)。表示専用なので block 能力は無い。
 
 ## 3. hooks.json 構造
 
@@ -136,6 +152,24 @@ tool 引数で filter:
 ```
 
 `Edit(*.ts)` / `Bash(git *)` 形式。**blockable event のみ** (`PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `PermissionRequest` / `PermissionDenied`)。
+
+#### `Bash(...)` パターンの実コマンドマッチ挙動 [実機検証済: v2.1.170]
+
+`Bash(<glob>)` は **コマンド文字列をそのまま glob 比較するのではなく、shell 構文を解析してサブコマンドごとに判定**する。`$()` / backtick 内 / leading `VAR=value` assignment / `&&`・`;` 区切りの各サブコマンドが展開され、いずれかが glob にマッチすれば発火する。「`$()` / `$VAR` を含むと無条件で全発火」ではない (= その誤発火は v2.1.163 で修正済)。
+
+`if: "Bash(git *)"` で各種コマンドを headless 実行した実測マトリクス:
+
+| Bash コマンド | 発火 | 理由 |
+|---|---|---|
+| `echo hello` | × | サブコマンドに `git` 無し |
+| `git log --oneline` | ✓ | コマンド名 `git` 一致 |
+| `FOO=bar git status` | ✓ | leading assignment 除去後 `git status` が一致 |
+| `echo $(git status)` | ✓ | `$()` 内の `git status` を判定 |
+| `` echo `git status` `` | ✓ | backtick 内の `git status` を判定 |
+| `echo $HOME` | × | `$VAR` 展開しても `git` サブコマンド無し → 発火しない |
+| `echo $(date)` | × | `$()` 内に `git` 無し → 発火しない |
+
+ポイント: `$VAR` / `$()` を含むだけでは発火せず、**展開後に実際にコマンド名がマッチするかどうか**で決まる。公式 docs では「コマンド名より深く指定したパターン (`Bash(git push *)` 等) は `$()`/backtick/`$VAR` を含むコマンドに対して保守的に発火する (fail-open)」とされ、パース不能なコマンドも fail-open で発火する。本検証の `git *` はコマンド名のみ指定なので、上表どおり厳密判定が効く。
 
 ## 4. Hook command の type 種別
 
@@ -190,9 +224,32 @@ tool 引数で filter:
 
 #### SessionStart
 
+input:
+
 ```json
 { "source": "startup" }   // or "resume" / "clear" / "compact"
 ```
+
+output `hookSpecificOutput` 固有フィールド [実機検証済: v2.1.170]:
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "Current branch: feat/x",
+    "sessionTitle": "feat-x-worktree",
+    "reloadSkills": true,
+    "watchPaths": ["/abs/path/to/watch"]
+  }
+}
+```
+
+| field | 効果 |
+|---|---|
+| `additionalContext` | 最初の prompt 前に claude のコンテキストへ注入 [実機検証済: v2.1.170] |
+| `sessionTitle` | session title を設定 (= `/rename` 相当)。`source` が `startup` / `resume` の時のみ有効、`clear` / `compact` では無視 [spec、JSON 受理は実機確認済] |
+| `reloadSkills` | `true` で SessionStart hook 完了後に skill / command directory を再スキャン → **hook が動的に設置した skill が同一 session 内で使用可能になる** [実機検証済: v2.1.170。hook で SKILL.md を設置 → 同 session でその skill が起動できることを確認] |
+| `watchPaths` | この session 中 `FileChanged` を監視する絶対パス配列 [spec] |
 
 #### UserPromptSubmit
 
@@ -260,7 +317,7 @@ tool 引数で filter:
 }
 ```
 
-- `additionalContext`: claude のコンテキストに inject される追加テキスト (= tool event で `stdout` text を直接出してもこれに入る)
+- `additionalContext`: claude のコンテキストに inject される追加テキスト (= tool event で `stdout` text を直接出してもこれに入る)。`Stop` / `SubagentStop` でも `hookSpecificOutput.additionalContext` が有効で、**hook error 扱いにならず会話を継続したまま** feedback を注入できる [実機検証済: v2.1.170]
 - `hookSpecificOutput`: event ごとの decision (= PreToolUse なら permission、PermissionRequest なら behavior)
 
 ### 7.2 Exit code 意味
@@ -375,6 +432,7 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-gua
 | `file_path` | `ConfigChange` / `FileChanged` | 変更ファイル |
 | `old_cwd` / `new_cwd` | `CwdChanged` | dir 変更 |
 | `mcp_server_name` | `Elicitation` / `ElicitationResult` | MCP server 名 |
+| `delta` / `final` / `index` / `message_id` / `turn_id` | `MessageDisplay` [実機検証済: v2.1.170] | 表示テキスト断片 / 最終フラグ / 発火順 / message UUID / turn UUID |
 
 [spec / 一部未検証]
 
@@ -385,7 +443,7 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-gua
 | `continue` | 全 event | false で event 種別ごとの「次の処理」を block |
 | `suppressOutput` | tool 系 event (`PreToolUse` / `PostToolUse` 等) | tool output の表示を抑制 |
 | `systemMessage` | 全 event | claude へ system message として inject |
-| `additionalContext` | 主に tool 系 event + `UserPromptSubmit` | claude のコンテキストに追加 text inject |
+| `additionalContext` | tool 系 event + `UserPromptSubmit` + `Stop` / `SubagentStop` [実機検証済: v2.1.170] | claude のコンテキストに追加 text inject。Stop/SubagentStop では hook error 扱いにせず会話継続したまま注入 |
 | `terminalSequence` | `Notification` | terminal protocol (OSC 等) で desktop notify |
 | `hookSpecificOutput.permissionDecision` | **`PreToolUse` のみ** | `allow` / `deny` / `ask` / `defer` |
 | `hookSpecificOutput.permissionDecisionReason` | `PreToolUse` | 上記の理由 text |
@@ -393,7 +451,9 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-gua
 | `hookSpecificOutput.behavior` | **`PermissionRequest` のみ** | `allow` / `deny` / `ask` |
 | `hookSpecificOutput.updatedPermissions` | `PreToolUse` / `PermissionRequest` | `setMode` で `bypassPermissions` / `acceptEdits` / `default` を session/settings に |
 | `hookSpecificOutput.retry` | `PermissionDenied` | `true` で tool call 再試行 |
-| `decision: "block"` + `reason` | `Stop` / `UserPromptSubmit` | turn 再開 (Stop) or turn 拒否 (UserPromptSubmit) |
+| `hookSpecificOutput.displayContent` | **`MessageDisplay` のみ** [実機検証済: v2.1.170] | 画面表示テキストを置換 (transcript / claude が見る本文は不変) |
+| `hookSpecificOutput.sessionTitle` / `reloadSkills` / `watchPaths` | **`SessionStart` のみ** [実機検証済: v2.1.170] | title 設定 / skill 再スキャン / FileChanged 監視パス |
+| `decision: "block"` + `reason` | `Stop` / `SubagentStop` / `UserPromptSubmit` | turn 再開 (Stop / SubagentStop) or turn 拒否 (UserPromptSubmit) |
 
 [spec / 一部未検証]
 

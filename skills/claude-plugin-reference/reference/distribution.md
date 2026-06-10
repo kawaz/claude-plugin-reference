@@ -137,6 +137,139 @@ update を発火させる。
 
 参考実装: **kawaz/bump-semver** (`brew upgrade`) / **kawaz/claude-gh-monitor** (plugin update 適用)。
 
+## plugin list — 有効/無効フィルタ [実機検証済: v2.1.170]
+
+CLI の `claude plugin list` には `--enabled` / `--disabled` フィルタは**存在しない**。
+有効フィルタはインタラクティブセッション内の `/plugin list` スラッシュコマンドにのみ存在する。
+
+| コンテキスト | コマンド | フィルタ対応 |
+|---|---|---|
+| CLI | `claude plugin list` | `--json` で `enabled` フィールドが出る、フィルタなし [実機検証済: v2.1.170] |
+| インタラクティブセッション | `/plugin list --enabled` / `/plugin list --disabled` | 有効/無効プラグインのみ表示 [未検証 (対話 UI 専用)] 出典: CHANGELOG v2.1.163 |
+| シェルスクリプト等 | `claude plugin list --json \| jq '[.[] \| select(.enabled)]'` | `enabled` フィールドで手動フィルタ [実機検証済: v2.1.170] |
+
+- headless (`claude -p '/plugin list ...'`) は `/plugin isn't available in this environment.` を返す (= `/plugin` 系 slash command は対話 UI 専用) [実機検証済: v2.1.170]
+
+```bash
+# 有効プラグインのみ抽出 (CLI 経路)
+claude plugin list --json | jq '[.[] | select(.enabled == true)]'
+# 無効プラグインのみ抽出
+claude plugin list --json | jq '[.[] | select(.enabled == false)]'
+```
+
+## skills-dir 自動ロード plugin と `plugin init` [実機検証済: v2.1.170]
+
+`.claude-plugin/plugin.json` マニフェストを持つディレクトリを skills dir 以下に置くと、
+marketplace install なしで次セッションから `<name>@skills-dir` として自動ロードされる。
+
+### `plugin init` でのスキャフォールド
+
+```bash
+claude plugin init my-tool
+```
+
+- 作成先: `$CLAUDE_CONFIG_DIR/skills/my-tool/` (公式 docs 表記は `~/.claude/skills/` だが
+  実際は `CLAUDE_CONFIG_DIR/skills/` に作成される) [実機検証済: v2.1.170]
+- 生成物: `.claude-plugin/plugin.json` + `SKILL.md` の最小構成
+- 次セッション以降 `my-tool@skills-dir` として自動ロード、`/reload-plugins` で即時適用も可
+
+### skills-dir plugin の配置ルール
+
+| skills dir | スコープ | ロード条件 |
+|---|---|---|
+| `$CLAUDE_CONFIG_DIR/skills/` (= personal) | ユーザ全プロジェクト | 常時 |
+| `<cwd>/.claude/skills/` (= project) | そのプロジェクトのみ | workspace trust 承認後 |
+
+**`.claude/skills/` と `.claude/plugins/` の区別**: `@skills-dir` のソースは `skills/` のみ。
+`plugins/` は marketplace インストール済み plugin のキャッシュ置き場であり、
+ユーザが直接置いて自動ロードさせる対象ではない。[実機検証済: v2.1.170]
+
+| 配置場所 | ロード方式 | plugin list での表示 |
+|---|---|---|
+| `$CLAUDE_CONFIG_DIR/skills/<name>/.claude-plugin/plugin.json` あり | `@skills-dir` 自動ロード | `<name>@skills-dir`、`Status: ✔ loaded` |
+| `$CLAUDE_CONFIG_DIR/skills/<name>/SKILL.md` のみ (manifest なし) | plain skill として直接ロード | `plugin list` には出ない |
+| `$CLAUDE_CONFIG_DIR/plugins/cache/` | marketplace install 済み | `<name>@<marketplace>`、`Status: ✔ enabled` |
+
+### skills-dir plugin の無効化・削除
+
+```bash
+# 無効化 (ディレクトリは残る)
+claude plugin disable my-tool@skills-dir
+# 削除: ディレクトリごと削除するだけ (uninstall コマンド不要)
+rm -rf "$CLAUDE_CONFIG_DIR/skills/my-tool"
+```
+
+## `defaultEnabled: false` — インストール時無効化 [spec]
+
+出典: [Plugins Reference](https://code.claude.com/docs/en/plugins-reference.md)。実機検証は未実施 (= install→enable の往復が必要で重いため spec 引用に留める)。
+
+`plugin.json` または marketplace entry に `defaultEnabled: false` を設定すると、
+インストール直後は無効状態になる。ユーザが明示的に有効化するまでロードされない。
+
+```json
+{
+  "name": "optional-tool",
+  "defaultEnabled": false
+}
+```
+
+- ユーザが一度でも `claude plugin enable` / `/plugin enable` で有効化すると、
+  その設定が `enabledPlugins` に書き込まれ、以降は `defaultEnabled` の変更に影響されない
+- 依存先として require された場合は自動的に有効化される (依存元が active の間は `defaultEnabled` 無視)
+- v2.1.154 以降のみ有効。旧バージョンはこの field を無視してインストール時に有効化する
+
+同じ field は marketplace entry にも書ける。marketplace entry の値が `plugin.json` より優先される。
+
+## トラブルシュート — `--safe-mode` と bundled skills 無効化
+
+フラグ / 環境変数の実在は `claude --help` で確認済み [実機検証済: v2.1.170]。無効化範囲の一覧は公式 settings docs 由来 [spec] (各項目の個別実機検証は未実施)。
+
+### `--safe-mode` / `CLAUDE_CODE_SAFE_MODE`
+
+すべてのカスタマイズ (CLAUDE.md・skills・plugins・hooks・MCP servers・custom commands/agents 等) を
+無効にして起動する。設定壊れ・hook 暴走の診断に使う。Admin managed (policy) 設定は有効のまま。
+
+```bash
+# フラグで起動
+claude --safe-mode
+
+# 環境変数で同等
+CLAUDE_CODE_SAFE_MODE=1 claude
+```
+
+`--safe-mode` が無効化する範囲:
+- CLAUDE.md の自動ロード
+- すべての plugins (marketplace install 済み + skills-dir)
+- hooks
+- MCP servers (ユーザ設定分)
+- skills・custom commands・agents
+- output styles・workflows・custom themes・keybindings
+
+auth・model 選択・built-in tools・permissions は通常通り動く。
+
+### `disableBundledSkills` / `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS`
+
+`--safe-mode` より細かい粒度の設定。Claude Code に同梱された bundled skills と workflows だけを
+非表示にする。plugin / `.claude/skills/` / `.claude/commands/` の skills は**影響を受けない**。
+
+```json
+// settings.json
+{ "disableBundledSkills": true }
+```
+
+```bash
+# 環境変数で同等
+CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1 claude
+```
+
+| 設定 | plugin/user skills | bundled skills | hooks | MCP |
+|---|---|---|---|---|
+| `--safe-mode` | 無効 | 無効 | 無効 | 無効 |
+| `disableBundledSkills: true` | **有効のまま** | 無効 | 有効のまま | 有効のまま |
+
+`/init` 等の built-in slash command は `disableBundledSkills: true` でもタイプ可能だが、
+モデルからは非表示になる。
+
 ## version 管理
 
 - plugin.json に `version` 設定済 → その文字列に pin、ユーザは version 変更時のみ更新通知 [spec]

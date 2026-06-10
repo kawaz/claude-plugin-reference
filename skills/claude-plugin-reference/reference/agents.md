@@ -110,6 +110,35 @@ plugin が配る agent は **`<plugin-name>:<agent-name>`** で参照される�
 4. **セッション全体を agent 化**: `claude --agent <name>` または `settings.json` の `agent` key
    - plugin の `settings.json` でサポートされるのは `agent` と `subagentStatusLine` の 2 key のみ [spec]
 
+## `claude agents --json` の出力スキーマ [実機検証済: v2.1.170]
+
+スクリプトから background session の状態を取得する用途向け。
+
+```bash
+claude agents --json          # アクティブセッション (background 含む)
+claude agents --json --all    # 完了済みセッションも含む
+```
+
+各エントリのフィールド:
+
+| フィールド | 型 | 出現条件 | 値の例 |
+|---|---|---|---|
+| `pid` | number | 常に | `46808` |
+| `sessionId` | string | 常に | `"0ac2d19f-0069-..."` |
+| `cwd` | string | 常に | `"/path/to/repo"` |
+| `kind` | string | 常に | `"background"` / `"interactive"` |
+| `startedAt` | number | 常に | Unix ms タイムスタンプ |
+| `status` | string | ほぼ常に (起動直後は欠落の場合あり) | `"idle"` / `"busy"` |
+| `id` | string | **background のみ** | `"0ac2d19f"` (sessionId 先頭 8 文字) |
+| `name` | string | background かつ名前あり | `"config-setup-agents"` |
+| `state` | string | **background のみ** | `"blocked"` (他の値は未観測) |
+| `waitingFor` | string | waiting 状態時のみ (optional) | [未検証] 実機では未観測 |
+
+- `id`: background session の短縮識別子。`sessionId` の先頭 8 文字と一致する
+- `state`: background session の追加状態。`"blocked"` = permission prompt 等で待機中
+- `waitingFor` [未検証]: changelog 文言では「waiting session が何を待っているか (例: permission prompt)」。実機では出現条件を再現できておらず、値の形式は未確認
+- `--all` [未検証]: `--help` 文言では「完了済みセッションも含む (the full agent view list)」。完了済みセッションが併存する状態での出力差は実機未観測
+
 ## skill の `context: fork` + `agent:` との関係 [spec]
 
 skill 側からも agent を指名できる (詳細は [skills.md](skills.md) の Subagent execution)。

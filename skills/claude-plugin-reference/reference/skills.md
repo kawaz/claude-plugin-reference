@@ -63,7 +63,7 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | `disable-model-invocation` | bool | 任意 | true = AI 自動 invoke 不可、manual `/name` のみ | listing から description も削除 = AI コンテキスト食わない (= ユーザ専用 skill 向け) [実機検証済] |
 | `user-invocable` | bool | 任意 | false = `/` menu と listing から非表示、AI のみ invoke | background knowledge 用途 |
 | `allowed-tools` | string\|array | 任意 | skill active 中に permission 無しで使える tool | `"Bash(git add *) Bash(git commit *)"`、turn 終了で clear |
-| `disallowed-tools` | string\|array | 任意 | skill active 中に使えなくなる tool | auto-loop で危険 tool 防止 |
+| `disallowed-tools` | string\|array | 任意 | skill active 中に使えなくなる tool | auto-loop で危険 tool 防止。**[実機検証済: v2.1.170]** `disallowed-tools: Bash` の skill が active な間、Bash 実行は `Permission to use Bash has been denied.` で拒否される (= 次メッセージで解除)。詳細 §6.1 |
 | `model` | string | 任意 | model override | `sonnet` / `opus` / `inherit` |
 | `effort` | string | 任意 | effort override | `low` / `medium` / `high` / `xhigh` / `max` (model 依存) |
 | `context` | string | 任意 | `fork` で subagent 実行 | parent session から isolation |
@@ -83,6 +83,29 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | `$ARGUMENTS` | 全引数文字列 (as typed) | `/skill #123 urgent` → `$ARGUMENTS` = `"#123 urgent"` |
 | `$N` (= `$0`, `$1`...) | N-th 引数 (shell quoting 適用) | `/skill "hello world" second` → `$0`="hello world", `$1`="second" |
 | `$<name>` | frontmatter `arguments: [issue, branch]` の named getter | `$issue` = 1st arg |
+
+### 4.1.1 リテラル `$` のエスケープ (`\$`) [実機検証済: v2.1.170]
+
+本文中で展開対象トークン (`$N` / `$ARGUMENTS` / `$<name>`) の前のリテラル `$` を出したい場合、直前に `\` を 1 個置いてエスケープする (`\$1.00`)。展開対象でない `$` の前の `\` はそのまま残る。
+
+検証: temp project の `.claude/skills/<name>/SKILL.md` 本文に各パターンを並べ、`claude -p '/<name> alpha bravo'` で本文を逐語 echo させて観測。
+
+| 本文の記述 | `/x alpha bravo` (引数あり) | `/x` (引数なし) | 解釈 |
+|---|---|---|---|
+| `$1` | `bravo` | (空) | 2nd 引数に展開 (= `$0` が 1st) |
+| `\$1` | `$1` | `$1` | エスケープ → リテラル `$1` (引数有無に依らず) |
+| `\$100` | `$100` | `$100` | `$1` は数字前で展開対象だが `\` で抑止 → リテラル |
+| `$ARGUMENTS` | `alpha bravo` | (空) | 全引数に展開 |
+| `\$ARGUMENTS` | `$ARGUMENTS` | `$ARGUMENTS` | エスケープ → リテラル |
+| `$0` | `alpha` | (空) | 1st 引数 |
+| `\\$1` | `\\bravo` | `\\` | 二重 `\` は両方残り、`$1` は通常展開される (= エスケープ成立せず) |
+| `price is \$1.00` | `price is $1.00` | `price is $1.00` | prose 中の金額表記の標準形 |
+| `cost\$50` | `cost$50` | `cost$50` | 行頭でなくても `\$` は有効 |
+
+**ポイント**:
+- `\$` は「単一の `\` が展開トークン直前にあるとき」だけエスケープ成立。`\\$1` のように `\` が 2 個だと `\\` がそのまま残り `$1` は展開される
+- エスケープは引数の有無に依存しない (= 引数 0 個でも `\$1` はリテラル `$1` のまま)
+- `${CLAUDE_*}` 系 (4.2) は別機構。本エスケープは `$N` / `$ARGUMENTS` / `$<name>` の引数展開トークン向け
 
 ### 4.2 環境変数 / plugin 系
 
@@ -178,6 +201,21 @@ skill 本文中で `!`command`` または ` ```! ` fenced block を書くと、*
 - `disable-model-invocation: true` を付けた 6 user skill (`/cmux-msg-peers` 等) は **AI の system-reminder available skills 一覧に出てこない** (= description 含めて context 食わない) → ユーザ専用 slash command として最適 [実機検証済]
 - 大本 `skills/cmux-msg/SKILL.md` (= disable-model-invocation 無し) は AI 一覧に出る、`/cmux-msg:cmux-msg` で full namespace 表示
 
+### 6.1 `disallowed-tools` の実機挙動 [実機検証済: v2.1.170]
+
+skill frontmatter の `disallowed-tools` に挙げた tool は、その skill が active な間 (= 本文 invoke 後、次のユーザメッセージまで) Claude の利用可能 tool プールから除外される。
+
+検証マトリクス (temp project の `.claude/skills/<name>/SKILL.md` で `Bash` を対象に観測):
+
+| frontmatter | skill 本文の指示 | 観測結果 |
+|---|---|---|
+| `disallowed-tools: Bash` | 「Bash で echo を実行せよ」 | `Permission to use Bash has been denied.` で拒否 |
+| `allowed-tools: Bash(echo:*)` (disallowed なし) | 同上 | echo 成功 (= 対照群) |
+
+- 拒否は permission denial の形で返る (= tool 自体が消えるのでなく実行が deny される)
+- 用途: 自律 loop skill で `AskUserQuestion` を封じる / 破壊的 tool を一時的に外す等
+- 全 skill / prompt 横断で恒久 block したい場合は permission settings の deny rule を使う (= こちらは skill scoped)
+
 ## 7. Skill content lifecycle
 
 - skill invocation 時、本文が **single message として会話に挿入**
@@ -192,6 +230,15 @@ skill 本文中で `!`command`` または ` ```! ` fenced block を書くと、*
 - `/reload-plugins` (interactive command、AI からは叩けない) で最新 version cache に切替
 - session restart でも同様に最新化
 - = SKILL.md 本文に `${CLAUDE_PLUGIN_ROOT}/bin/...` を書いておけば、reload 後の skill invocation 時には新 version の絶対パスが embed される (= 古い cache 問題に巻き込まれない設計)
+
+### 8.1 `/reload-skills` (= skill ディレクトリ再スキャン) [実機検証済: v2.1.170]
+
+session 再起動なしに skill ディレクトリ群を再スキャンする slash command。`/reload-plugins` が plugin cache の version 切替なのに対し、こちらは **skill 定義 (SKILL.md / `commands/*.md`) の再読み込み** に使う。
+
+- 実行すると `Reloaded skills: N skills available (no changes)` を返す
+- `.claude/skills/<new>/SKILL.md` を新規追加してから実行すると available カウントに反映される (= project scope の新規 skill を拾う) ことを実機確認
+- headless (`claude -p '/reload-skills'`) でも動作する (= 単純に再スキャンして要約を返すだけ。対話 UI 専用ではない)
+- 用途: skill を編集 / 追加した直後、同一 session 内で反映させたいとき。`/reload-plugins` (plugin 版) と対をなす
 
 ## 9. Subagent execution (`context: fork`)
 

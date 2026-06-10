@@ -69,3 +69,29 @@ _check-version-bumped *target_paths:
     bump-semver compare gt .claude-plugin/plugin.json vcs:main@origin:.claude-plugin/plugin.json --no-hint && exit 0
     echo 'ERROR: bump-trigger が変わってるが version 未 bump。"just bump-version" を実行してください' >&2
     exit 1
+
+# ---------- reference freshness ----------
+
+# SKILL.md の最終検証スタンプと claude --version を比較し、陳腐化を検出する。
+# 一致なら "fresh: vX.Y.Z" を表示して終了 (exit 0)。
+# 不一致なら両バージョンと案内を表示して exit 1。
+# push の deps には含めない (= 任意実行)。
+[script]
+check-freshness:
+    current=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    stamped=$(grep -oE 'Claude Code v[0-9]+\.[0-9]+\.[0-9]+' skills/claude-plugin-reference/SKILL.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+    if [ -z "$current" ]; then
+      echo "ERROR: claude --version の取得に失敗しました" >&2
+      exit 1
+    fi
+    if [ -z "$stamped" ]; then
+      echo "ERROR: SKILL.md の最終検証スタンプが見つかりません" >&2
+      exit 1
+    fi
+    if [ "$current" = "$stamped" ]; then
+      echo "fresh: v${current}"
+    else
+      echo "stale: SKILL.md の最終検証 v${stamped} / 現行 claude v${current}"
+      echo "メンテパス実施を検討してください: docs/runbooks/cc-version-maintenance.md"
+      exit 1
+    fi
