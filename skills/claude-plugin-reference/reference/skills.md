@@ -78,6 +78,8 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 
 ### 4.1 引数展開
 
+> **注意: `$0` が 1st 引数** (= shell の「`$0` はスクリプト名、`$1` が 1st」慣習と**異なる**)。`$1` を 1st 引数のつもりで書くと 1 個ずれる。off-by-one 事故の定番なので skill 作成時は必ず確認。
+
 | 変数 | 説明 | 例 |
 |---|---|---|
 | `$ARGUMENTS` | 全引数文字列 (as typed) | `/skill #123 urgent` → `$ARGUMENTS` = `"#123 urgent"` |

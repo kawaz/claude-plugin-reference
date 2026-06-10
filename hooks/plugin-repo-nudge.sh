@@ -31,7 +31,10 @@ esac
 
 [ "$hit" = 1 ] || exit 0
 
-msg="このプロジェクトは Claude Code 設定ファイルを含みます。plugin / skill / hooks / commands / agents の仕様は試行錯誤せず /claude-plugin-reference:claude-plugin-reference スキルを参照してください。"
+# Design rationale: msg は英語固定。本 plugin は marketplace で公開配布され、additionalContext は
+# model-facing (= モデルはセッション言語で応答するので注入言語に依存しない)。日本語固定だと
+# 非日本語圏ユーザの全セッションに日本語が注入されてしまうため英語に寄せる。
+msg="This project contains Claude Code plugin/config files. Do not trial-and-error the plugin / skill / hooks / commands / agents specs - consult the /claude-plugin-reference:claude-plugin-reference skill first."
 
 # additionalContext を JSON で返す。msg に \" や \\ を含めないので printf 直書きで valid JSON。
 printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$msg"
