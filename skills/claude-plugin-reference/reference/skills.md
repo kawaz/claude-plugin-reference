@@ -115,6 +115,32 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 
 → AI に流入する時には `/Users/kawaz/.claude-personal/plugins/cache/cmux-msg/cmux-msg/0.28.13/bin/cmux-msg $ARGUMENTS` に置換済 (= bash 解決依存なく、その plugin instance の bin を確実指定)
 
+### 4.4 展開境界 (= 推移しない) [実機検証済]
+
+template 変数 (`${CLAUDE_SKILL_DIR}` / `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PROJECT_DIR}` 等) は **「harness が直接ロードするファイル」でのみ展開**される single-pass 機構。そこから「参照される側」「subagent 側」「bash subprocess」へは **推移しない** (= shell の env と同じく明示伝達が必要)。
+
+| 場所 | 展開? | 補足 |
+|---|---|---|
+| `SKILL.md` 本文 | ✓ | Skill 起動時、context 流入直前に展開 |
+| `hooks.json` の `command` 文字列 | ✓ | hook 起動時に展開し shell exec |
+| `.claude-plugin/*.json` / `marketplace.json` | (該当箇所のみ) | plugin 規約による |
+| supporting files (`instruction.md` / `reference/*.md` 等) | **✗** | SKILL.md が `${CLAUDE_SKILL_DIR}/instruction.md` を指しても、その file の **中身は raw** |
+| subagent の prompt | **✗** | Agent tool の `prompt` は親が組み立てる時点で展開済の値を埋める必要あり |
+| Bash 起動 script の env | **✗** | `echo $CLAUDE_PLUGIN_ROOT` は空 (= 4.3 と同じ)。本文の `${...}` は展開済で流入するが bash 自身は env を持たない |
+| MCP サーバ / 外部プロセスの env | **✗** | 親から明示伝達しない限り見えない |
+
+**How to apply**:
+
+1. **supporting file (instruction.md 等) でパス参照したい**: supporting file 内に `${CLAUDE_SKILL_DIR}` と書いても literal で残る (= Read が ENOENT)。SKILL.md 本文 or subagent prompt 側で展開済の絶対パスを組み立てて渡す。
+2. **Bash script でパス参照したい**: SKILL.md 本文の bash code block 内の `${CLAUDE_SKILL_DIR}` は展開対象。ただし script 内で `$CLAUDE_SKILL_DIR` を読むと空なので、env / 引数で明示伝達する (`SKILL_DIR="${CLAUDE_SKILL_DIR}" bash "${CLAUDE_SKILL_DIR}/scripts/run.sh"`)。
+3. **subagent prompt で指示したい**: Agent tool の prompt は親 context で組み立てるので `${CLAUDE_SKILL_DIR}` を直接埋め込めば展開済の値が乗る。subagent は独立 context だが、prompt に `CLAUDE_SKILL_DIR=${CLAUDE_SKILL_DIR}` の形で絶対パスが書かれていれば、その配下の `instruction.md` 等を Read できる。
+
+**検証履歴**:
+
+- `personal-gh-image-attach` skill で `${CLAUDE_SKILL_DIR}` を SKILL.md 本文に記載 → Skill 起動時に `/Users/kawaz/.claude-personal/skills/personal-gh-image-attach` (= symlink パス、resolve 後の実体ではない) に展開されることを確認 [実機検証済 2026-06-10]
+- 冒頭プロローグとして `Base directory for this skill: <path>` が自動付与される
+- `${CLAUDE_PLUGIN_ROOT}` の bash env 内では空 [実機検証済 (claude-plugin-reference)]
+
 ## 5. Dynamic Context Injection (`!`command``)
 
 skill 本文中で `!`command`` または ` ```! ` fenced block を書くと、**skill invocation 時に command を実行し、出力で placeholder を置換** してから claude に渡す。
