@@ -22,7 +22,7 @@ esac
 
 [ "$hit" = 1 ] || exit 0
 
-msg="このリポジトリは Claude Code plugin / rules 関連です。plugin / skill / hooks / commands / agents の仕様は試行錯誤せず claude-plugin-reference skill (/claude-plugin-reference:claude-plugin-reference) を参照してください。"
+msg="このプロジェクトは Claude Code 設定ファイルを含みます。plugin / skill / hooks / commands / agents の仕様は試行錯誤せず /claude-plugin-reference:claude-plugin-reference スキルを参照してください。"
 
 # additionalContext を JSON で返す。msg に \" や \\ を含めないので printf 直書きで valid JSON。
 printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$msg"
