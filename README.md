@@ -1,9 +1,11 @@
 # claude-plugin-reference
 
-Claude Code plugin / skill / hooks の **実機検証込み** リファレンス。
-公式 docs はふんわりしている (= 「指定したら何が効くか / いつ使えるか」が読み取りきれない) 部分が多いので、自分の plugin 開発で実機検証して確証取った一次情報を集約する。
+> English | [日本語](./README-ja.md)
 
-kawaz/cmux-msg, kawaz/hyoui その他自前 plugin から `${CLAUDE_PLUGIN_ROOT}/...` 経由 or skill 参照で読める。毎 plugin で同じ説明を繰り返さない。
+A **field-verified** reference for Claude Code plugins / skills / hooks.
+The official docs are vague in places (= "what takes effect when you specify X / when can you use Y" is hard to read off), so this repo collects primary-source info confirmed via real-world plugin development.
+
+Loadable from any kawaz-authored plugin (e.g. kawaz/cmux-msg, kawaz/hyoui) via `${CLAUDE_PLUGIN_ROOT}/...` or by skill reference — so the same explanations don't get repeated in every plugin.
 
 ## Install
 
@@ -19,36 +21,39 @@ claude plugin marketplace update claude-plugin-reference
 claude plugin update claude-plugin-reference@claude-plugin-reference
 ```
 
-## 提供する skill
+## Provided skill
 
-`claude-plugin-reference:claude-plugin-reference` の 1 skill のみ。skill 本文は目次のみ、詳細は関心別の reference ファイルに分けて on-demand で読む構造:
+A single skill: `claude-plugin-reference:claude-plugin-reference`. The SKILL body is just a table of contents; details live in topic-specific reference files loaded on demand:
 
 ```
 skills/claude-plugin-reference/
-├── SKILL.md                    # 目次 (invocation 時に AI 流入)
+├── SKILL.md                    # ToC (streamed to the AI on invocation)
 └── reference/
-    ├── distribution.md         # 配布編 (plugin.json / marketplace.json / 配布フロー / version bump)
-    ├── hooks.md                # フック編 (全 Hook event 一覧 / matcher / JSON input/output / blockable / 強制力)
-    ├── skills.md               # スキル編 (SKILL.md frontmatter / string substitution / Dynamic Context Injection / invocation 制御)
-    ├── commands.md             # コマンド編 (commands/*.md の役割 / 書式 / skills との使い分け / 3 軸構造)
-    └── agents.md               # エージェント編 (agents field / agent frontmatter / 名前空間 / スコープ / 起動方法 / plugin agent の制限)
+    ├── distribution.md         # Distribution (plugin.json / marketplace.json / flow / version bump)
+    ├── hooks.md                # Hooks (all Hook events / matcher / JSON I/O / blockable / strength)
+    ├── skills.md               # Skills (SKILL.md frontmatter / string substitution / Dynamic Context Injection / invocation control)
+    ├── commands.md             # Commands (role of commands/*.md / format / vs. skills / 3-axis structure)
+    └── agents.md               # Agents (agents field / agent frontmatter / namespacing / scope / launch / plugin agent restrictions)
 ```
 
-## 提供する hook
+## Provided hook
 
-`SessionStart` フック (`hooks/plugin-repo-nudge.sh`) を 1 つ同梱。cwd の project root に
-`.claude-plugin/plugin.json` があれば「ここは plugin repo なので試行錯誤せず本 skill を参照せよ」と
-1 文だけ `additionalContext` で inject する (plugin repo 以外では沈黙)。plugin 開発で reference を
-見ずにトライ&エラーする事故を入口で防ぐのが狙い。
+Ships a single `SessionStart` hook (`hooks/plugin-repo-nudge.sh`). It injects a one-line `additionalContext` saying "consult this skill first instead of trial-and-error" when any of the following is true (silent otherwise):
 
-## 記述ポリシー
+- Project root has `.claude-plugin/plugin.json`
+- `CLAUDE_PROJECT_DIR` path contains `/claude-rules-*/` (= working in a rule overlay repo)
+- `CLAUDE_PROJECT_DIR` path contains `/.claude` (= directly editing Claude config directories etc.)
 
-- 各項目は **公式 spec 引用** + **実機検証結果** + **「ふんわりだった挙動 → 確証」** の 3 つを区別
-- `spec で保証されている範囲` と `実装の副産物` は区別する規律
-- 検証していない項目は `[未検証]` と明示 (= 嘘の確証を撒かない)
-- 出典 URL は一次情報リンク (code.claude.com/docs/en/...) を併記
+The goal is to prevent plugin / skill / hook trial-and-error mistakes at the entry point.
 
-## 参考 URL (出典一次情報)
+## Writing policy
+
+- Each item distinguishes **official spec citation**, **field verification result**, and **"was vague → now confirmed"**
+- Discipline of separating `what spec guarantees` from `implementation side effects`
+- Unverified items are marked `[未検証]` (= no fake confirmations spread)
+- Source URLs cite primary references (code.claude.com/docs/en/...)
+
+## Reference URLs (primary sources)
 
 - [Claude Code Plugins](https://code.claude.com/docs/en/plugins.md)
 - [Plugins Reference](https://code.claude.com/docs/en/plugins-reference.md)
@@ -57,3 +62,12 @@ skills/claude-plugin-reference/
 - [Discover and install plugins](https://code.claude.com/docs/en/discover-plugins.md)
 - [Hooks Guide](https://code.claude.com/docs/en/hooks-guide.md)
 - [Hooks Reference](https://code.claude.com/docs/en/hooks.md)
+
+## Documentation
+
+- [docs/DESIGN.md](./docs/DESIGN.md) — Current implementation (domain + architecture)
+- [docs/STRUCTURE.md](./docs/STRUCTURE.md) — Repository physical structure
+
+## License
+
+MIT License, Yoshiaki Kawazu (@kawaz)

@@ -8,7 +8,7 @@ set positional-arguments
 # ---------- main tasks ----------
 
 # push (バージョン bump 済みを前提、全 gate 通過後に push してローカルも更新)
-push: ensure-clean validate check-versions check-version-bumped
+push: ensure-clean validate check-versions check-version-bumped check-outdated-translations
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
     just on-success-release
 
@@ -45,8 +45,13 @@ on-success-release:
     @echo ""
     @echo "[hint] /reload-plugins to apply in this session without restart"
 
-# bump-trigger (skills/ README.md hooks/) 変更時に version bump 済か検証 (変更なしならスキップ)
-check-version-bumped: (_check-version-bumped "skills/" "README.md" "hooks/")
+# bump-trigger (skills/ README*.md hooks/) 変更時に version bump 済か検証 (変更なしならスキップ)
+check-version-bumped: (_check-version-bumped "skills/" "README.md" "README-ja.md" "hooks/")
+
+# 翻訳ペア (*-ja.md = 正本、*.md = 英訳) の commit-lag を検出 (= 正本 > 翻訳の場合エラー)。
+# 詳細は docs-structure skill / kawaz/bump-semver の justfile を参照。
+check-outdated-translations: ensure-clean
+    bump-semver vcs outdated 'glob:**/*-ja.md' '$1/$2.md'
 
 # trigger paths の diff があれば version が main@origin より上がっているか検証。
 # bump-semver vcs diff -q で jj/git 分岐を統一 (DR-0020, v0.20.0+)。
