@@ -39,8 +39,12 @@ SKILL.md は **目次のみ** に絞り、AI 流入する常時 context を最�
 `SessionStart` で `additionalContext` を 1 文 inject する。判定は **OR**:
 
 1. `.claude-plugin/plugin.json` 保有 (= plugin リポ作業中)
-2. `CLAUDE_PROJECT_DIR` パスに `/claude-rules-*/` を含む (= rule overlay リポ作業中)
-3. `CLAUDE_PROJECT_DIR` パスに `/.claude` を含む (= Claude 設定ディレクトリを直接触っている)
+2. `CLAUDE_PROJECT_DIR` のパス要素に `claude-rules-*` を含む (= rule overlay リポ作業中、リポルート直下でも発火)
+3. `CLAUDE_PROJECT_DIR` のパス要素が `.claude` または `.claude-*` で始まる (= Claude 設定ディレクトリを直接触っている、例 `~/.claude-personal`)
+
+判定はパス要素境界で行う (= `$root` の末尾に `/` を足して `*/<elem>/*` でマッチ)。これにより `.claudexyz` のような dash なし接尾の無関係ディレクトリには誤発火せず、`claude-rules-personal` をリポルートで直接指す場合も発火する。
+
+`hooks.json` の matcher は空文字 (`""`) = SessionStart の全 source (startup / resume / clear / compact) で発火する意図。
 
 該当しないセッションでは沈黙 (= plugin hook は enable 中の全セッションで発火するため、ノイズを出さない設計)。
 

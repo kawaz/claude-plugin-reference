@@ -8,7 +8,7 @@ set positional-arguments
 # ---------- main tasks ----------
 
 # push (バージョン bump 済みを前提、全 gate 通過後に push してローカルも更新)
-push: ensure-clean validate check-versions check-version-bumped check-outdated-translations
+push: ensure-clean validate test check-versions check-version-bumped check-outdated-translations check-embedded-justfile-sync
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
     just on-success-release
 
@@ -25,6 +25,10 @@ version:
 # plugin spec を validate
 validate:
     claude plugin validate .
+
+# tests/ 配下のテストを実行 (1 つでも fail したら exit 非 0)
+test:
+    @for f in tests/*.test.sh; do bash "$f" || exit 1; done
 
 # ---------- internal recipes (push の依存) ----------
 
@@ -70,11 +74,24 @@ _check-version-bumped *target_paths:
     echo 'ERROR: bump-trigger が変わってるが version 未 bump。"just bump-version" を実行してください' >&2
     exit 1
 
+# distribution.md の埋め込み justfile が実体と一致するか検証 (= 「実際に動かしている justfile」の看板を仕組みで保証)。
+# 不一致なら diff を表示して fail。同期は reference/distribution.md の ```justfile ブロックを実体で置き換える。
+[private]
+[script]
+check-embedded-justfile-sync:
+    doc=skills/claude-plugin-reference/reference/distribution.md
+    embedded=$(awk '/^```justfile$/{f=1;next} /^```$/{f=0} f' "$doc")
+    if [ "$embedded" != "$(cat justfile)" ]; then
+      echo "ERROR: $doc の埋め込み justfile が実体と不一致。実体の内容でコードブロックを更新してください" >&2
+      diff <(printf '%s\n' "$embedded") justfile >&2 || true
+      exit 1
+    fi
+
 # ---------- reference freshness ----------
 
-# SKILL.md の最終検証スタンプと claude --version を比較し、陳腐化を検出する。
-# 一致なら "fresh: vX.Y.Z" を表示して終了 (exit 0)。
-# 不一致なら両バージョンと案内を表示して exit 1。
+# SKILL.md の最終検証スタンプと claude --version を semver 比較し、陳腐化を検出する。
+# 現行 = スタンプ → fresh (exit 0) / 現行 > スタンプ → stale (exit 1) /
+# 現行 < スタンプ → fresh 扱い (= 現行側が古いだけ、メンテ不要。exit 0)。
 # push の deps には含めない (= 任意実行)。
 [script]
 check-freshness:
@@ -90,8 +107,18 @@ check-freshness:
     fi
     if [ "$current" = "$stamped" ]; then
       echo "fresh: v${current}"
-    else
-      echo "stale: SKILL.md の最終検証 v${stamped} / 現行 claude v${current}"
-      echo "メンテパス実施を検討してください: docs/runbooks/cc-version-maintenance.md"
-      exit 1
+      exit 0
     fi
+    rc=0
+    bump-semver compare gt "$current" "$stamped" -qq || rc=$?
+    case "$rc" in
+      0)
+        echo "stale: SKILL.md の最終検証 v${stamped} / 現行 claude v${current}"
+        echo "メンテパス実施を検討してください: docs/runbooks/cc-version-maintenance.md"
+        exit 1 ;;
+      1)
+        echo "fresh: SKILL.md の最終検証 v${stamped} (現行 claude v${current} の方が古い環境)" ;;
+      *)
+        echo "ERROR: bump-semver compare failed (rc=$rc)" >&2
+        exit 1 ;;
+    esac

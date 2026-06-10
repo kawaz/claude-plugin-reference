@@ -41,8 +41,8 @@ skills/claude-plugin-reference/
 `SessionStart` フック (`hooks/plugin-repo-nudge.sh`) を 1 つ同梱。以下いずれかに該当するセッションで「試行錯誤せず本 skill を参照せよ」と `additionalContext` で 1 文 inject する (該当しないセッションでは沈黙):
 
 - project root に `.claude-plugin/plugin.json` 保有
-- `CLAUDE_PROJECT_DIR` パスに `/claude-rules-*/` を含む (= rule overlay リポ作業中)
-- `CLAUDE_PROJECT_DIR` パスに `/.claude` を含む (= Claude 設定ディレクトリ等を直接触っている)
+- `CLAUDE_PROJECT_DIR` のパス要素に `claude-rules-*` を含む (= rule overlay リポ作業中、リポルート直下でも発火)
+- `CLAUDE_PROJECT_DIR` のパス要素が `.claude` または `.claude-*` で始まる (= Claude 設定ディレクトリを直接触っている、例 `~/.claude-personal`)。`.claudexyz` のような dash なし接尾には発火しない
 
 plugin / skill / hooks 開発で reference を見ずにトライ&エラーする事故を入口で防ぐのが狙い。
 

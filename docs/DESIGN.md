@@ -39,8 +39,12 @@ SKILL.md is kept to **just a table of contents**, minimizing the always-streamed
 On `SessionStart`, injects a one-line `additionalContext`. The condition is an **OR**:
 
 1. `.claude-plugin/plugin.json` exists (= working in a plugin repo)
-2. `CLAUDE_PROJECT_DIR` path contains `/claude-rules-*/` (= working in a rule overlay repo)
-3. `CLAUDE_PROJECT_DIR` path contains `/.claude` (= directly editing Claude config dirs)
+2. A `CLAUDE_PROJECT_DIR` path element contains `claude-rules-*` (= working in a rule overlay repo; fires even at the repo root)
+3. A `CLAUDE_PROJECT_DIR` path element starts with `.claude` or `.claude-*` (= directly editing a Claude config dir, e.g. `~/.claude-personal`)
+
+Matching is done at path-element boundaries (= append a trailing `/` to `$root` and match `*/<elem>/*`). This avoids false positives on unrelated dirs with a dash-less suffix like `.claudexyz`, and still fires when `claude-rules-personal` is the repo root itself.
+
+The `hooks.json` matcher is the empty string (`""`) = it intentionally fires on every SessionStart source (startup / resume / clear / compact).
 
 Silent for non-matching sessions (= plugin hooks fire in *every* enabled session, so the design avoids noise).
 

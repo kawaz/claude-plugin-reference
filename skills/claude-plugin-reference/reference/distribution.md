@@ -9,7 +9,7 @@ plugin を配布するにはリポジトリ内の以下の2つのパスにマニ
 このプラグインのマニフェストファイルが最小テンプレとして使えます。
 触るのは `name` / `description` / `version` / `repository` の 4 field。残り固定でOK。
 
-## README に install/update　手順を記載
+## README に install/update 手順を記載
 
 ```
 # インストール手順
@@ -27,8 +27,9 @@ claude plugin update <plugin-name>@<marketplace-name>
 
 ## version 管理ワークフロー (justfile, jj/git 両対応) [実機検証済]
 
-実際にこのリポで動かしている justfile。`jj/git push` 直叩きは push-guard hook が block するので、
-品質ゲートを通すこの task 経由で push する。`claude-plugin-reference` の箇所は自分の plugin 名 / marketplace 名に置換。
+実際にこのリポで動かしている justfile (= 実体との一致を `check-embedded-justfile-sync` gate が push 時に機械検証するので、このコードブロックは drift しない)。`jj/git push` 直叩きは push-guard hook が block するので、品質ゲートを通すこの task 経由で push する。
+
+自分の plugin に流用するときは: `claude-plugin-reference` の箇所を自分の plugin 名 / marketplace 名に置換。本リポ固有の gate (`check-outdated-translations` = ja/en 翻訳ペア運用、`check-freshness` = リファレンス鮮度、`check-embedded-justfile-sync` = 本ファイルとの同期、`test` = tests/ 保有リポのみ) は自リポの構成に合わせて取捨選択する。
 
 設計方針 (kawaz/* plugin リポ共通):
 
@@ -38,10 +39,14 @@ claude plugin update <plugin-name>@<marketplace-name>
 - **just 変数 (`name := value`) は使わない**。固定パスリストでも positional / dependency 引数渡しか
   リテラル直書きにする。理由は quote 安全性だけでなく、**全 plugin リポで justfile が同形に揃い、
   読み手が迷わず差分も減る (省コンテキスト)** こと。`personal-docs-structure` skill の「task runner」節に準拠。
-- **bump-trigger は配布物のみ**。skill plugin は `skills/ README.md`、hook のみの plugin (例: push-guard)
-  は `hooks/`。`docs/` 等の開発メタや `justfile` 自体は trigger 外 (= それらだけの変更では version bump 不要)。
+- **bump-trigger は配布物のみ**。skill のみの plugin は `skills/ README*.md`、hook のみの plugin (例: push-guard)
+  は `hooks/`、skill + hook 両方持つ本リポは `skills/ README.md README-ja.md hooks/` の 4 つ。
+  `docs/` 等の開発メタや `justfile` 自体は trigger 外 (= それらだけの変更では version bump 不要)。
 
 ```justfile
+# claude-plugin-reference push / bump-version / validate
+# (push-guard hook 経由でこの task を使うことで、直叩き block を回避)
+
 # ---------- settings ----------
 
 set positional-arguments
@@ -49,7 +54,7 @@ set positional-arguments
 # ---------- main tasks ----------
 
 # push (バージョン bump 済みを前提、全 gate 通過後に push してローカルも更新)
-push: ensure-clean validate check-versions check-version-bumped
+push: ensure-clean validate test check-versions check-version-bumped check-outdated-translations check-embedded-justfile-sync
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
     just on-success-release
 
@@ -67,29 +72,40 @@ version:
 validate:
     claude plugin validate .
 
+# tests/ 配下のテストを実行 (1 つでも fail したら exit 非 0)
+test:
+    @for f in tests/*.test.sh; do bash "$f" || exit 1; done
+
 # ---------- internal recipes (push の依存) ----------
 
 # uncommitted change がない状態か確認 (git/jj-agnostic, DR-0020)
 ensure-clean:
     bump-semver vcs is clean
 
-# plugin.json と marketplace.json の version 一致を保証 (multi-file 整合性)
+# plugin.json と marketplace.json の version 一致を保証 (multi-file 整合性)。
+# bump-semver get は multi-file 時に内部で整合チェック (不一致は error 表示で exit 非 0)。
 [private]
 check-versions:
     @bump-semver get .claude-plugin/plugin.json .claude-plugin/marketplace.json --no-hint >/dev/null
 
-# release 成功後の local 反映 (慣習名 on-success-release)。
-# CI 無しリポは "release = push 完了" なので push から直接呼ぶ。
+# release 成功後の local 反映: marketplace + plugin を update (CI 無しは push から直接 / CI ありは watch 経由)
 on-success-release:
     claude plugin marketplace update claude-plugin-reference
     claude plugin update claude-plugin-reference@claude-plugin-reference
+    @echo ""
     @echo "[hint] /reload-plugins to apply in this session without restart"
 
-# bump-trigger (skills/ README.md) 変更時に version bump 済か検証 (変更なしならスキップ)
-check-version-bumped: (_check-version-bumped "skills/" "README.md")
+# bump-trigger (skills/ README*.md hooks/) 変更時に version bump 済か検証 (変更なしならスキップ)
+check-version-bumped: (_check-version-bumped "skills/" "README.md" "README-ja.md" "hooks/")
 
-# trigger paths の diff があれば version が main@origin より上がっているか検証
-# exit 0=変更なし / 1=変更あり / 3=VCS error を case で区別、`|| rc=$?` で set -e 回避
+# 翻訳ペア (*-ja.md = 正本、*.md = 英訳) の commit-lag を検出 (= 正本 > 翻訳の場合エラー)。
+# 詳細は docs-structure skill / kawaz/bump-semver の justfile を参照。
+check-outdated-translations: ensure-clean
+    bump-semver vcs outdated 'glob:**/*-ja.md' '$1/$2.md'
+
+# trigger paths の diff があれば version が main@origin より上がっているか検証。
+# bump-semver vcs diff -q で jj/git 分岐を統一 (DR-0020, v0.20.0+)。
+# exit 0=変更なし / 1=変更あり / 3=VCS error を case で区別、`|| rc=$?` で set -e 回避。
 [private]
 [script]
 _check-version-bumped *target_paths:
@@ -98,11 +114,60 @@ _check-version-bumped *target_paths:
     case "$rc" in
       0) exit 0 ;;
       1) ;;
-      *) echo "ERROR: bump-semver vcs diff failed (rc=$rc). main@origin 未 track? 先に 'jj git fetch' / 'git fetch'" >&2; exit 1 ;;
+      *) echo "ERROR: bump-semver vcs diff failed (rc=$rc). main@origin が track されていない可能性。先に 'jj git fetch' / 'git fetch' を試してください" >&2; exit 1 ;;
     esac
     bump-semver compare gt .claude-plugin/plugin.json vcs:main@origin:.claude-plugin/plugin.json --no-hint && exit 0
-    echo 'ERROR: 配布物が変わってるが version 未 bump。"just bump-version" を実行' >&2
+    echo 'ERROR: bump-trigger が変わってるが version 未 bump。"just bump-version" を実行してください' >&2
     exit 1
+
+# distribution.md の埋め込み justfile が実体と一致するか検証 (= 「実際に動かしている justfile」の看板を仕組みで保証)。
+# 不一致なら diff を表示して fail。同期は reference/distribution.md の ```justfile ブロックを実体で置き換える。
+[private]
+[script]
+check-embedded-justfile-sync:
+    doc=skills/claude-plugin-reference/reference/distribution.md
+    embedded=$(awk '/^```justfile$/{f=1;next} /^```$/{f=0} f' "$doc")
+    if [ "$embedded" != "$(cat justfile)" ]; then
+      echo "ERROR: $doc の埋め込み justfile が実体と不一致。実体の内容でコードブロックを更新してください" >&2
+      diff <(printf '%s\n' "$embedded") justfile >&2 || true
+      exit 1
+    fi
+
+# ---------- reference freshness ----------
+
+# SKILL.md の最終検証スタンプと claude --version を semver 比較し、陳腐化を検出する。
+# 現行 = スタンプ → fresh (exit 0) / 現行 > スタンプ → stale (exit 1) /
+# 現行 < スタンプ → fresh 扱い (= 現行側が古いだけ、メンテ不要。exit 0)。
+# push の deps には含めない (= 任意実行)。
+[script]
+check-freshness:
+    current=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    stamped=$(grep -oE 'Claude Code v[0-9]+\.[0-9]+\.[0-9]+' skills/claude-plugin-reference/SKILL.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+    if [ -z "$current" ]; then
+      echo "ERROR: claude --version の取得に失敗しました" >&2
+      exit 1
+    fi
+    if [ -z "$stamped" ]; then
+      echo "ERROR: SKILL.md の最終検証スタンプが見つかりません" >&2
+      exit 1
+    fi
+    if [ "$current" = "$stamped" ]; then
+      echo "fresh: v${current}"
+      exit 0
+    fi
+    rc=0
+    bump-semver compare gt "$current" "$stamped" -qq || rc=$?
+    case "$rc" in
+      0)
+        echo "stale: SKILL.md の最終検証 v${stamped} / 現行 claude v${current}"
+        echo "メンテパス実施を検討してください: docs/runbooks/cc-version-maintenance.md"
+        exit 1 ;;
+      1)
+        echo "fresh: SKILL.md の最終検証 v${stamped} (現行 claude v${current} の方が古い環境)" ;;
+      *)
+        echo "ERROR: bump-semver compare failed (rc=$rc)" >&2
+        exit 1 ;;
+    esac
 ```
 
 ### 運用フロー [実機検証済]

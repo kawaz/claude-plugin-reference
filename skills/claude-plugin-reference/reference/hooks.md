@@ -2,7 +2,7 @@
 
 cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス。各 event について「タイミング / 主要用途 / 何ができるか / JSON input/output schema」を整理。
 
-> `[spec]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認 (TODO)、`[実装の副産物]` = spec 保証なしの挙動
+> `[spec]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認、`[実装の副産物]` = spec 保証なしの挙動
 
 ## 1. 配置と発見順序
 
@@ -183,6 +183,12 @@ tool 引数で filter:
 
 `UserPromptSubmit` event の hook は強制的に 30s に short-circuit。[spec]
 
+### `command` type の shell-form / exec-form [実機検証済: v2.1.170]
+
+- **shell-form** (`command: "..."` のみ): shell (bash) で実行。`#` 以降は comment、`&&` / pipe / 変数展開も効く。
+- **exec-form** (`command: "..."` + `args: [...]`): shell を介さず argv を **literal** で渡す。`args` の各要素はそのまま引数になり、`#` も comment 化されない。
+- → §9.0 の plugin 識別子マーカー (`... #marker`) は **shell-form 限定**。exec-form では `#marker` が literal 引数になる。
+
 ## 5. Hook process の env
 
 | 変数 | 値 | 範囲 |
@@ -196,7 +202,9 @@ tool 引数で filter:
 
 ## 6. JSON input schema
 
-### 6.1 共通フィールド (全 event)
+### 6.1 共通フィールド
+
+全 event 共通で必ず来るのは `session_id` / `cwd` / `hook_event_name` / `transcript_path` の 4 つ [実機検証済: v2.1.170]。`permission_mode` / `effort` は **event とモデルに依存**して来る/来ない。
 
 ```json
 {
@@ -204,11 +212,19 @@ tool 引数で filter:
   "cwd": "/current/working/directory",
   "hook_event_name": "<EventName>",
   "transcript_path": "/path/to/transcript.jsonl",
-  "permission_mode": "default|bypassPermissions|acceptEdits",
-  "claude_config_dir": "$CLAUDE_CONFIG_DIR",
-  "project_root": "/project/root"
+  "permission_mode": "default|plan|acceptEdits|auto|dontAsk|bypassPermissions",
+  "effort": { "level": "low|medium|high|xhigh|max" }
 }
 ```
+
+| field | 範囲 | 備考 |
+|---|---|---|
+| `session_id` / `cwd` / `hook_event_name` / `transcript_path` | 全 event | [実機検証済: v2.1.170] |
+| `permission_mode` | 一部 event のみ | 有効値 6 種: `default` / `plan` / `acceptEdits` / `auto` / `dontAsk` / `bypassPermissions` [spec]。**`SessionStart` には来ない** [実機検証済: v2.1.170]。各 event の JSON 例で要確認 [spec] |
+| `effort` | tool-use 文脈の event (`PreToolUse` / `PostToolUse` / `Stop` / `SubagentStop`) かつ effort 対応モデル時のみ | `{"level": ...}`。opus で `high` を観測、haiku では欠落 [実機検証済: v2.1.170]。`$CLAUDE_EFFORT` env でも参照可 [spec] |
+| `agent_id` / `agent_type` | subagent 文脈で発火する hook のみ非 null | main thread では両方 `null`。subagent (`--agent` / Task) 内では `agent_type` に agent 名 (custom subagent は frontmatter の `name`) [実機検証済: v2.1.170。Task `general-purpose` 内 PreToolUse で確認] |
+
+> **注 (負の確定事実)**: `claude_config_dir` / `project_root` という field は **どの event の stdin にも来ない** (公式 hooks docs の共通フィールド表にも無い) [実機検証済: v2.1.170]。それらしき記述を二次情報で見ても追加しないこと。config dir / project root が要るなら env (`$CLAUDE_PROJECT_DIR` 等、§5) を使う。
 
 ### 6.2 event 固有フィールド
 
@@ -218,7 +234,8 @@ tool 引数で filter:
 {
   "tool_name": "Bash",
   "tool_input": { "command": "npm test" },
-  "tool_output": { "result": "..." }   // PostToolUse のみ
+  "tool_use_id": "toolu_...",            // PreToolUse で観測 [実機検証済: v2.1.170]
+  "tool_output": { "result": "..." }     // PostToolUse のみ
 }
 ```
 
@@ -260,10 +277,16 @@ output `hookSpecificOutput` 固有フィールド [実機検証済: v2.1.170]:
 #### Stop
 
 ```json
-{ "conversation_length": 42, "stop_hook_active": false }
+{
+  "stop_hook_active": false,
+  "last_assistant_message": "...",   // [実機検証済: v2.1.170]
+  "background_tasks": [],             // [実機検証済: v2.1.170]
+  "session_crons": []                // [実機検証済: v2.1.170]
+}
 ```
 
 `stop_hook_active: true` の時は max 8 連続 block 後に自動 continue (= 無限 block 防止)。`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` env で cap 調整可。
+(`conversation_length` は [spec]、実測では上記 `last_assistant_message` / `background_tasks` / `session_crons` を観測。)
 
 #### ConfigChange
 
@@ -381,8 +404,8 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh]: BLOCK: 
 }
 ```
 
-- bash shell-form では `#` 以降が comment 扱い = script 実行に影響しない [実機検証済: kawaz/claude-push-guard v0.3.1 / 本リポの SessionStart hook で配備、block/inject とも正常動作]
-- claude runtime の error 表示は literal の command string をそのまま出すので、`#push-guard` が見える = plugin 名を識別可 [error ヘッダ表示部分は実 block を踏んでの目視確認が TODO]
+- bash shell-form では `#` 以降が comment 扱い = script 実行に影響しない [実機検証済: v2.1.170。settings.json hook で `echo X #marker` を発火 → 出力は `X` のみ。加えて kawaz/claude-push-guard v0.3.1 / 本リポの SessionStart hook で配備、block/inject とも正常動作]
+- claude runtime の error 表示は **展開前 command string を `[...]` に literal でそのまま出す**ので、`#push-guard` がそこに見える = plugin 名を識別可 [実機検証済: v2.1.170。下記参照]
 
 ```
 PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-guard]: BLOCK: ...
@@ -390,12 +413,21 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-gua
                                                                        これで plugin 名わかる
 ```
 
+**実機で確認した error ヘッダ形式** [実機検証済: v2.1.170]: settings.json 直書きの PreToolUse(Bash) hook を `exit 2 #blockmarker-DDD` で発火させたところ、`--output-format json` の tool_result error に以下が literal で出た (grep `hook error: \[.*#blockmarker-DDD\]` が pass):
+
+```
+PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-DDD]: BLOCKED_BY_HOOK_XYZ
+```
+
+`[...]` の中身は command 文字列の literal で、末尾 `#marker` もそこに含まれる = この workaround の核心メカニズムは確認済み。
+
 **制約**:
-- shell-form (= `command: "..."` のみ) で有効。exec-form (= `command` + `args` 同時指定) では `#` が literal 引数として渡される可能性 → exec-form では別経路 (= env var inject 等) [未検証]
+- shell-form (= `command: "..."` のみ) で有効。exec-form (= `command` + `args` 同時指定) では `#` が **literal 引数として渡される** (comment 化されない) → exec-form では別経路 (= env var inject 等) が必要 [実機検証済: v2.1.170。`args:["a","#marker","b"]` を仕込むと script の argv が `[a] [#marker] [b]` で受理されることを確認]
+- **plugin 経由 (`${CLAUDE_PLUGIN_ROOT}` 付き) で、error ヘッダに展開前 (literal `${CLAUDE_PLUGIN_ROOT}`) と展開後 (実体パス) のどちらが出るかは plugin install 環境が必要なため本ハーネスでは [未検証]**。確認できたのは「error ヘッダに command 文字列が literal で出て、末尾 `#marker` もそこに含まれる」という共通部分まで
 - runtime の error message format が将来変わると無効化される可能性 [実装の副産物に依存]
 - 本来は claude runtime が展開後パスを表示するか hook output に plugin name を付けるべき (= upstream に feedback したい話)
 
-
+### 9.1 その他のハマり所
 
 - **JSON output に shell profile の echo が混入** → invalid JSON、hook output 無視。`if [[ $- == *i* ]]; then echo ...; fi` で interactive-only guard を [実機検証推奨]
 - **hook command の wd は stdin の `cwd` と違う** → `cd "$cwd" && ...` で明示移動 [実機検証済 (cmux-msg)]
@@ -408,26 +440,28 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-gua
 
 | field | 含まれる event | 値の例 |
 |---|---|---|
-| **`session_id`** | 全 event (共通) | UUID v4 |
-| **`cwd`** | 全 event (共通) | event 起動時の cwd |
-| **`hook_event_name`** | 全 event (共通) | `"PreToolUse"` 等 |
-| **`transcript_path`** | 全 event (共通) | `.jsonl` ファイルパス |
-| **`permission_mode`** | 全 event (共通) | `default` / `bypassPermissions` / `acceptEdits` |
-| **`claude_config_dir`** | 全 event (共通) | `$CLAUDE_CONFIG_DIR` 値 |
-| **`project_root`** | 全 event (共通) | project root |
+| **`session_id`** | 全 event (共通) [実機検証済: v2.1.170] | UUID v4 |
+| **`cwd`** | 全 event (共通) [実機検証済: v2.1.170] | event 起動時の cwd |
+| **`hook_event_name`** | 全 event (共通) [実機検証済: v2.1.170] | `"PreToolUse"` 等 |
+| **`transcript_path`** | 全 event (共通) [実機検証済: v2.1.170] | `.jsonl` ファイルパス |
+| **`permission_mode`** | 一部 event (`SessionStart` には来ない) [実機検証済: v2.1.170] | `default` / `plan` / `acceptEdits` / `auto` / `dontAsk` / `bypassPermissions` の 6 値 [spec] |
+| **`effort`** | tool-use 文脈 event (`PreToolUse` / `PostToolUse` / `Stop` / `SubagentStop`) + effort 対応モデル時のみ [実機検証済: v2.1.170] | `{"level":"low\|medium\|high\|xhigh\|max"}` |
+| **`agent_id`** / **`agent_type`** | subagent 文脈の hook のみ非 null (main は `null`) [実機検証済: v2.1.170] | agent 識別子 / agent 名 (`"general-purpose"` 等) |
 | `tool_name` | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `PermissionRequest` / `PermissionDenied` | `"Bash"` 等 |
 | `tool_input` | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | `{"command": "npm test"}` 等 |
+| `tool_use_id` | `PreToolUse` で観測 [実機検証済: v2.1.170] | `"toolu_..."` |
 | `tool_output` | `PostToolUse` のみ | tool 結果 JSON |
 | `error` | `PostToolUseFailure` | エラー内容 |
 | `permission_prompt_type` | `PermissionRequest` | dialog 種別 |
 | `reason` | `PermissionDenied` | deny 理由 |
 | `prompt` | `UserPromptSubmit` / `UserPromptExpansion` | user 入力 text |
 | `source` | `SessionStart` (`startup`/`resume`/`clear`/`compact`) / `Setup` (`init`/`maintenance`) / `ConfigChange` (`user_settings`/...) / `InstructionsLoaded` (`session_start`/`compact`/...) | event ごとに値が違う |
-| `conversation_length` | `Stop` | turn 数 |
-| `stop_hook_active` | `Stop` | bool、`true` なら既 block 中 |
+| `conversation_length` | `Stop` [spec] | turn 数 |
+| `stop_hook_active` | `Stop` [実機検証済: v2.1.170] | bool、`true` なら既 block 中 |
+| `last_assistant_message` / `background_tasks` / `session_crons` | `Stop` [実機検証済: v2.1.170] | 直近 assistant message / 実行中 BG task 配列 / cron 配列 |
 | `error_type` | `StopFailure` | `"rate_limit"` / `"server_error"` 等 |
 | `notification_type` | `Notification` | `"permission_prompt"` / `"idle_prompt"` 等 |
-| `agent_type` | `SubagentStart` / `SubagentStop` | agent 種別 |
+| `agent_id` / `agent_type` | subagent 文脈で発火する **任意の** hook (`SubagentStart` / `SubagentStop` に限らず、subagent 内 `PreToolUse` 等も含む) [実機検証済: v2.1.170] | agent 識別子 / agent 種別。main thread では両方 `null` |
 | `exit_code` | `SubagentStop` | subagent exit code |
 | `file_path` | `ConfigChange` / `FileChanged` | 変更ファイル |
 | `old_cwd` / `new_cwd` | `CwdChanged` | dir 変更 |

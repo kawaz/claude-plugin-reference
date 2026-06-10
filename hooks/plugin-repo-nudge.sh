@@ -2,8 +2,8 @@
 # SessionStart hook: 以下いずれかに該当するなら、claude-plugin-reference skill の
 # 参照を促す additionalContext を inject する:
 #   (a) Claude Code plugin リポ (= .claude-plugin/plugin.json 保有)
-#   (b) パスに /claude-rules-*/ を含む (= rule overlay リポ作業中)
-#   (c) パスに /.claude を含む (= Claude 設定ディレクトリ等を直接触っている)
+#   (b) パス要素に claude-rules-* を含む (= rule overlay リポ作業中、リポルート直下でも発火)
+#   (c) パス要素が .claude または .claude-* で始まる (= Claude 設定ディレクトリ、例 ~/.claude-personal)
 # plugin / skill / hooks / commands / agents の仕様を試行錯誤せず一次リファレンスに当てさせる狙い。
 #
 # plugin hook は enable 中の "全" セッションで発火するため、対象外では沈黙する。
@@ -16,8 +16,17 @@ root="${CLAUDE_PROJECT_DIR:-$PWD}"
 
 hit=0
 [ -f "$root/.claude-plugin/plugin.json" ] && hit=1
-case "$root" in
-  */.claude*|*/claude-rules-*/*) hit=1 ;;
+# Design rationale: パス要素境界で判定するため $root の末尾に "/" を付けて正規化し、
+# 各パターンを */<elem>/* 形式で書く。これにより:
+#   - `*/.claude/*` : `.claude` ディレクトリ要素 (例 ~/.claude/...) のみマッチ。
+#     旧 `*/.claude*` の部分一致 (= `.claudexyz` 誤マッチ) を回避するため狭めた。
+#   - `*/.claude-*/*` : `.claude-personal` 等 dash 付き接尾の設定ディレクトリにマッチ。
+#     `.claudexyz` (dash なし接尾) には意図的にマッチさせない。
+#   - `*/claude-rules-*/*` : 正規化で末尾 "/" を足したので、リポルート
+#     (`.../kawaz/claude-rules-personal`) を直接指す場合も `claude-rules-personal/` として
+#     マッチする。旧パターンは末尾に追加 1 階層を要求しルート直下で発火しなかったため広げた。
+case "$root/" in
+  */.claude/*|*/.claude-*/*|*/claude-rules-*/*) hit=1 ;;
 esac
 
 [ "$hit" = 1 ] || exit 0

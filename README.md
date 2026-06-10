@@ -41,8 +41,8 @@ skills/claude-plugin-reference/
 Ships a single `SessionStart` hook (`hooks/plugin-repo-nudge.sh`). It injects a one-line `additionalContext` saying "consult this skill first instead of trial-and-error" when any of the following is true (silent otherwise):
 
 - Project root has `.claude-plugin/plugin.json`
-- `CLAUDE_PROJECT_DIR` path contains `/claude-rules-*/` (= working in a rule overlay repo)
-- `CLAUDE_PROJECT_DIR` path contains `/.claude` (= directly editing Claude config directories etc.)
+- A `CLAUDE_PROJECT_DIR` path element contains `claude-rules-*` (= working in a rule overlay repo; fires even at the repo root)
+- A `CLAUDE_PROJECT_DIR` path element starts with `.claude` or `.claude-*` (= directly editing a Claude config directory, e.g. `~/.claude-personal`). Does not fire on a dash-less suffix like `.claudexyz`
 
 The goal is to prevent plugin / skill / hook trial-and-error mistakes at the entry point.
 

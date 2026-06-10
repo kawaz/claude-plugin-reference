@@ -20,6 +20,8 @@ claude-plugin-reference/
   hooks/
     hooks.json                     SessionStart 登録
     plugin-repo-nudge.sh           判定 + additionalContext inject
+  tests/
+    plugin-repo-nudge.test.sh      nudge 判定のテーブル駆動テスト (just test)
   docs/                            設計・運用・履歴 (docs-structure skill 参照)
     DESIGN-ja.md / DESIGN.md       現実装の説明 (日英ペア)
     STRUCTURE.md                   本ファイル (物理構造)
@@ -41,16 +43,19 @@ canonical 実装は kawaz/bump-semver の justfile。本リポでは以下 recip
 | `bump-version [level]` | `.claude-plugin/plugin.json` と `marketplace.json` の version を更新 + Release commit |
 | `version` | 現在の version 表示 |
 | `validate` | `claude plugin validate .` 実行 |
+| `test` | `tests/*.test.sh` を実行 (hook 判定ロジックの回帰検出) |
 | `ensure-clean` | working tree が clean か検証 |
 | `check-versions` | plugin.json と marketplace.json の version 整合 |
 | `check-version-bumped` | trigger paths (`skills/` `README*.md` `hooks/`) 変更時に bump 必須 |
 | `check-outdated-translations` | `*-ja.md` 正本 > `*.md` 翻訳の lag を検出 |
+| `check-embedded-justfile-sync` | distribution.md の埋め込み justfile と実体の一致を検証 |
+| `check-freshness` | SKILL.md の最終検証スタンプと `claude --version` を semver 比較 (任意実行、push deps 外) |
 | `on-success-release` | marketplace + plugin を update |
 
 push の deps 順序:
 
 ```
-push: ensure-clean validate check-versions check-version-bumped check-outdated-translations
+push: ensure-clean validate test check-versions check-version-bumped check-outdated-translations check-embedded-justfile-sync
 ```
 
 ## 配布フロー
