@@ -1,11 +1,13 @@
 ---
 name: claude-plugin-reference
-description: Claude Code plugin / skill / hooks の実機検証込みリファレンス。
+description: Claude Code の plugin / skills / hooks / commands / agents / marketplace の実機検証済みリファレンス (field-verified reference)。SKILL.md frontmatter fields, hook events & JSON I/O schemas, matcher syntax, string substitution (${CLAUDE_PLUGIN_ROOT} 等), plugin.json / marketplace.json, 配布フロー / version bump を扱う。plugin 開発・hook 作成・skill 定義・仕様確認の際に必ず参照する。
 ---
 
 > **最終検証: Claude Code v2.1.170 (2026-06-10)**
+>
+> このスタンプは「このバージョンまでの公式 changelog 差分を消化済み」の意であり、全項目をこのバージョンで再観測したという意味ではない。各項目の実測バージョンは個別ラベル (例 `[実機検証済: v2.1.170]`) が正。
 
-`${CLAUDE_SKILL_DIR}/reference/` 配下を Read してください。
+`${CLAUDE_SKILL_DIR}/reference/` 配下のうち、**必要なトピックのファイルのみ Read** してください (context 最小化のための二段構成)。
 
 - [distribution.md](reference/distribution.md) — 配布編 (plugin.json / marketplace.json / 配布フロー / version bump)
 - [hooks.md](reference/hooks.md) — フック編 (全 hook event / matcher / JSON input/output schema / blockable / 強制力)

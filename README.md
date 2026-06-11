@@ -5,7 +5,9 @@
 A **field-verified** reference for Claude Code plugins / skills / hooks.
 The official docs are vague in places (= "what takes effect when you specify X / when can you use Y" is hard to read off), so this repo collects primary-source info confirmed via real-world plugin development.
 
-Loadable from any kawaz-authored plugin (e.g. kawaz/cmux-msg, kawaz/hyoui) via `${CLAUDE_PLUGIN_ROOT}/...` or by skill reference — so the same explanations don't get repeated in every plugin.
+Loadable from any other plugin or session via skill reference (`claude-plugin-reference:claude-plugin-reference`) — so the same explanations don't get repeated in every plugin.
+
+> Note: the reference body is currently **Japanese only**. This README (cover page) is bilingual, but the on-demand `reference/*.md` files are not yet translated.
 
 ## Install
 
@@ -41,8 +43,8 @@ skills/claude-plugin-reference/
 Ships a single `SessionStart` hook (`hooks/plugin-repo-nudge.sh`). It injects a one-line `additionalContext` saying "consult this skill first instead of trial-and-error" when any of the following is true (silent otherwise):
 
 - Project root has `.claude-plugin/plugin.json`
-- A `CLAUDE_PROJECT_DIR` path element contains `claude-rules-*` (= working in a rule overlay repo; fires even at the repo root)
-- A `CLAUDE_PROJECT_DIR` path element starts with `.claude` or `.claude-*` (= directly editing a Claude config directory, e.g. `~/.claude-personal`). Does not fire on a dash-less suffix like `.claudexyz`
+- A `CLAUDE_PROJECT_DIR` path element **starts with** `claude-rules-` (= derived from kawaz's rule-overlay repo naming convention; fires even at the repo root, and also on unrelated repos that share the same prefix)
+- A `CLAUDE_PROJECT_DIR` path element is exactly `.claude`, or **starts with** `.claude-` (= directly editing a Claude config directory, e.g. `~/.claude-personal`). Does not fire on a dash-less suffix like `.claudexyz`
 
 The goal is to prevent plugin / skill / hook trial-and-error mistakes at the entry point.
 
@@ -50,7 +52,7 @@ The goal is to prevent plugin / skill / hook trial-and-error mistakes at the ent
 
 - Each item distinguishes **official spec citation**, **field verification result**, and **"was vague → now confirmed"**
 - Discipline of separating `what spec guarantees` from `implementation side effects`
-- Unverified items are marked `[未検証]` (= no fake confirmations spread)
+- Unverified items are marked `[未検証]` (= unverified; no fake confirmations spread)
 - Source URLs cite primary references (code.claude.com/docs/en/...)
 
 ## Reference URLs (primary sources)

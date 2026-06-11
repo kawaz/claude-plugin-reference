@@ -39,10 +39,10 @@ SKILL.md is kept to **just a table of contents**, minimizing the always-streamed
 On `SessionStart`, injects a one-line `additionalContext`. The condition is an **OR**:
 
 1. `.claude-plugin/plugin.json` exists (= working in a plugin repo)
-2. A `CLAUDE_PROJECT_DIR` path element contains `claude-rules-*` (= working in a rule overlay repo; fires even at the repo root)
-3. A `CLAUDE_PROJECT_DIR` path element starts with `.claude` or `.claude-*` (= directly editing a Claude config dir, e.g. `~/.claude-personal`)
+2. A `CLAUDE_PROJECT_DIR` path element **starts with** `claude-rules-` (= kawaz's rule-overlay repo naming convention; fires even at the repo root). This is a prefix match, so unrelated repos sharing the prefix also fire — accepted as a known false-positive trade-off.
+3. A `CLAUDE_PROJECT_DIR` path element is exactly `.claude`, or **starts with** `.claude-` (= directly editing a Claude config dir, e.g. `~/.claude-personal`)
 
-Matching is done at path-element boundaries (= append a trailing `/` to `$root` and match `*/<elem>/*`). This avoids false positives on unrelated dirs with a dash-less suffix like `.claudexyz`, and still fires when `claude-rules-personal` is the repo root itself.
+Matching is done at path-element boundaries (= append a trailing `/` to `$root` and match `*/<elem>/*`), on the literal (non-realpath-resolved) path string. This avoids false positives on unrelated dirs with a dash-less suffix like `.claudexyz`, and still fires when `claude-rules-personal` is the repo root itself.
 
 The `hooks.json` matcher is the empty string (`""`) = it intentionally fires on every SessionStart source (startup / resume / clear / compact).
 
@@ -53,7 +53,7 @@ Silent for non-matching sessions (= plugin hooks fire in *every* enabled session
 Built around `bump-semver` + `justfile` to **consolidate gates at push**:
 
 - `just push` is the entry point (= direct `jj git push` is blocked by the push-guard hook)
-- Gates: `ensure-clean` → `validate` → `check-versions` (multi-file consistency) → `check-version-bumped` (bump required when trigger paths change) → `check-outdated-translations` (translation lag detection)
+- The canonical gate list is the `push` recipe's `deps` in `justfile` (= single source of truth; do not re-enumerate here, it drifts). Key intents: working-tree clean, plugin spec validation, tests, multi-file version consistency, bump-required-on-trigger-change, translation-lag detection, embedded-justfile sync, bare-label detection.
 - After a successful push, `on-success-release` auto-updates the marketplace / plugin locally
 
 See [STRUCTURE.md](./STRUCTURE.md) and `justfile` for details.

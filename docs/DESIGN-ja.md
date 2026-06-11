@@ -39,10 +39,10 @@ SKILL.md は **目次のみ** に絞り、AI 流入する常時 context を最�
 `SessionStart` で `additionalContext` を 1 文 inject する。判定は **OR**:
 
 1. `.claude-plugin/plugin.json` 保有 (= plugin リポ作業中)
-2. `CLAUDE_PROJECT_DIR` のパス要素に `claude-rules-*` を含む (= rule overlay リポ作業中、リポルート直下でも発火)
-3. `CLAUDE_PROJECT_DIR` のパス要素が `.claude` または `.claude-*` で始まる (= Claude 設定ディレクトリを直接触っている、例 `~/.claude-personal`)
+2. `CLAUDE_PROJECT_DIR` のパス要素が `claude-rules-` で**始まる** (= kawaz の rule overlay リポ命名規約由来。リポルート直下でも発火)。prefix マッチなので同名 prefix の無関係リポでも発火する (= 仕様として許容する既知の false positive)
+3. `CLAUDE_PROJECT_DIR` のパス要素が `.claude` に等しい、または `.claude-` で**始まる** (= Claude 設定ディレクトリを直接触っている、例 `~/.claude-personal`)
 
-判定はパス要素境界で行う (= `$root` の末尾に `/` を足して `*/<elem>/*` でマッチ)。これにより `.claudexyz` のような dash なし接尾の無関係ディレクトリには誤発火せず、`claude-rules-personal` をリポルートで直接指す場合も発火する。
+判定はパス要素境界で行う (= `$root` の末尾に `/` を足して `*/<elem>/*` でマッチ)。realpath 解決はせずリテラルなパス文字列で判定する。これにより `.claudexyz` のような dash なし接尾の無関係ディレクトリには誤発火せず、`claude-rules-personal` をリポルートで直接指す場合も発火する。
 
 `hooks.json` の matcher は空文字 (`""`) = SessionStart の全 source (startup / resume / clear / compact) で発火する意図。
 
@@ -53,7 +53,7 @@ SKILL.md は **目次のみ** に絞り、AI 流入する常時 context を最�
 `bump-semver` + `justfile` で **push に gate を集約**する設計:
 
 - `just push` を入口とする (= 直 `jj git push` は push-guard hook で block)
-- gate: `ensure-clean` → `validate` → `check-versions` (multi-file 整合) → `check-version-bumped` (trigger paths 変更時に bump 必須) → `check-outdated-translations` (翻訳 lag 検出)
+- gate 一覧の正本は `justfile` の `push` recipe の `deps` (= single source of truth。ここで個別列挙すると drift するのでしない)。主な意図: working-tree clean / plugin spec validate / test / multi-file version 整合 / trigger 変更時の bump 必須 / 翻訳 lag 検出 / 埋め込み justfile 同期 / 裸ラベル検出。
 - push 成功後に `on-success-release` で marketplace / plugin を自動 update
 
 詳細は [STRUCTURE.md](./STRUCTURE.md) と `justfile`。

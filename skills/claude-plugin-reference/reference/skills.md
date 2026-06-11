@@ -1,6 +1,8 @@
 # スキル編 — SKILL.md frontmatter / string substitution / Dynamic Context Injection / invocation 制御
 
 > `[spec]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認、`[実装の副産物]` = spec 保証なしの挙動
+> - 無ラベル行の既定は `[spec]` (公式 docs 由来)。記憶・推測由来の項目は `[未検証]` を明示する。
+> - `[実機検証済: ~vX.Y.Z]` の `~` は記述導入時期からの推定バージョン (当時の再検証記録ではない)。
 
 ## 1. SKILL.md の配置パターン
 
@@ -14,7 +16,7 @@
 | `<plugin>/commands/<name>.md` | `<plugin>:<name>` | `/codex:setup`、`/codex:review` — 詳細は [commands.md](commands.md) |
 | `<plugin>/SKILL.md` (plugin root) | frontmatter `name` or plugin 名 | `/cmux-msg:cmux-msg` |
 
-### 補完表示ルール [実機検証済 2026-06-02 (cmux-msg / gh-monitor / codex)]
+### 補完表示ルール [実機検証済: ~v2.1.160 2026-06-02 (cmux-msg / gh-monitor / codex)]
 
 候補文字列は常に canonical な `/<plugin>:<name>`。bare 名 (= `/list` 等) でのフォールバック candidate は無い (= namespace 必須)。表示時に renderer が以下 3 パターンで分岐する:
 
@@ -60,12 +62,12 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | `when_to_use` | string | 任意 | description 補強 | 「ユーザが何を言ったら invoke してほしいか」 |
 | `argument-hint` | string | 任意 | autocomplete hint | 例: `[issue-number]`, `[filename] [format]` |
 | `arguments` | string\|array | 任意 | 位置引数 named getter | `arguments: [issue, branch]` で `$issue` `$branch` 展開可 |
-| `disable-model-invocation` | bool | 任意 | true = AI 自動 invoke 不可、manual `/name` のみ | listing から description も削除 = AI コンテキスト食わない (= ユーザ専用 skill 向け) [実機検証済] |
+| `disable-model-invocation` | bool | 任意 | true = AI 自動 invoke 不可、manual `/name` のみ | listing から description も削除 = AI コンテキスト食わない (= ユーザ専用 skill 向け) [実機検証済: ~v2.1.156] |
 | `user-invocable` | bool | 任意 | false = `/` menu と listing から非表示、AI のみ invoke | background knowledge 用途 |
 | `allowed-tools` | string\|array | 任意 | skill active 中に permission 無しで使える tool | `"Bash(git add *) Bash(git commit *)"`、turn 終了で clear |
 | `disallowed-tools` | string\|array | 任意 | skill active 中に使えなくなる tool | auto-loop で危険 tool 防止。**[実機検証済: v2.1.170]** `disallowed-tools: Bash` の skill が active な間、Bash 実行は `Permission to use Bash has been denied.` で拒否される (= 次メッセージで解除)。詳細 §6.1 |
 | `model` | string | 任意 | model override | `sonnet` / `opus` / `inherit` |
-| `effort` | string | 任意 | effort override | `low` / `medium` / `high` / `xhigh` / `max` (model 依存) |
+| `effort` | string | 任意 | effort override | `low` / `medium` / `high` / `xhigh` / `max` (model 依存。値セットの正本は [hooks.md §6.1](hooks.md#61-共通フィールド)) |
 | `context` | string | 任意 | `fork` で subagent 実行 | parent session から isolation |
 | `agent` | string | 任意 | `context: fork` 時の subagent type | `Explore` / `Plan` / `general-purpose` / custom |
 | `hooks` | object | 任意 | このスキル scoped hook | format は `.claude/settings.json` hooks と同じ |
@@ -113,9 +115,9 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 
 | 変数 | 説明 | 確証ステータス |
 |---|---|---|
-| `${CLAUDE_PLUGIN_ROOT}` | plugin installation root | **[実機検証済]** skill template として展開され、claude に流入する本文には絶対パスが入る。bash env としては流入しない (= bash で `echo $CLAUDE_PLUGIN_ROOT` は空)。**mid-session で plugin update した場合は `/reload-plugins` まで古い version path を指す** |
-| `${CLAUDE_PLUGIN_DATA}` | plugin data dir (`~/.claude/plugins/data/<id>/`) | [spec] plugin update で保持される (= 永続 state はここに置く) |
-| `${CLAUDE_SKILL_DIR}` | skill SKILL.md のあるディレクトリ (plugin skill なら skill subdir、not plugin root) | [spec] supporting file 参照に使う、cwd 非依存 |
+| `${CLAUDE_PLUGIN_ROOT}` | plugin installation root | **[実機検証済: ~v2.1.156]** skill template として展開され、claude に流入する本文には絶対パスが入る。bash env としては流入しない (= bash で `echo $CLAUDE_PLUGIN_ROOT` は空)。**mid-session で plugin update した場合は `/reload-plugins` まで古い version path を指す** |
+| `${CLAUDE_PLUGIN_DATA}` | plugin data dir (`$CLAUDE_CONFIG_DIR/plugins/data/<id>/`) | [spec] plugin update で保持される (= 永続 state はここに置く) |
+| `${CLAUDE_SKILL_DIR}` | skill SKILL.md のあるディレクトリ (plugin skill なら skill subdir、not plugin root) | **[実機検証済: v2.1.170 (本リポ自身)]** supporting file 参照に使う、cwd 非依存。本リポの SKILL.md 自身が `${CLAUDE_SKILL_DIR}/reference/` で reference を参照して現に動作している (§4.4 の 2026-06-10 検証履歴も根拠) |
 | `${CLAUDE_PROJECT_DIR}` | project root | [spec] |
 | `${CLAUDE_SESSION_ID}` | session UUID v4 | [spec] |
 | `${CLAUDE_EFFORT}` | current effort level | [spec] |
@@ -128,9 +130,9 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 
 | 経路 | 展開される? |
 |---|---|
-| SKILL.md template (= claude runtime が読む時) | ✓ [実機検証済 (cmux-msg v0.28.13)] |
+| SKILL.md template (= claude runtime が読む時) | ✓ [実機検証済: ~v2.1.156 (cmux-msg v0.28.13)] |
 | Hook command 内 (= shell env として) | ✓ [spec]、`${CLAUDE_PLUGIN_ROOT}` が env var として hook process に inject |
-| Skill から呼ばれた bash 内 (= bash env として) | **✗** [実機検証済] bash で `echo $CLAUDE_PLUGIN_ROOT` は空 — ただし SKILL.md template で展開済の絶対パスが本文に入るので、Skill 経由なら問題なし |
+| Skill から呼ばれた bash 内 (= bash env として) | **✗** [実機検証済: ~v2.1.156] bash で `echo $CLAUDE_PLUGIN_ROOT` は空 — ただし SKILL.md template で展開済の絶対パスが本文に入るので、Skill 経由なら問題なし |
 
 **Skill 経由で plugin bin を叩く正解パターン**:
 
@@ -140,7 +142,7 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 
 → AI に流入する時には `/Users/kawaz/.claude-personal/plugins/cache/cmux-msg/cmux-msg/0.28.13/bin/cmux-msg $ARGUMENTS` に置換済 (= bash 解決依存なく、その plugin instance の bin を確実指定)
 
-### 4.4 展開境界 (= 推移しない) [実機検証済]
+### 4.4 展開境界 (= 推移しない) [実機検証済: v2.1.170]
 
 template 変数 (`${CLAUDE_SKILL_DIR}` / `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PROJECT_DIR}` 等) は **「harness が直接ロードするファイル」でのみ展開**される single-pass 機構。そこから「参照される側」「subagent 側」「bash subprocess」へは **推移しない** (= shell の env と同じく明示伝達が必要)。
 
@@ -162,9 +164,9 @@ template 変数 (`${CLAUDE_SKILL_DIR}` / `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PRO
 
 **検証履歴**:
 
-- `personal-gh-image-attach` skill で `${CLAUDE_SKILL_DIR}` を SKILL.md 本文に記載 → Skill 起動時に `/Users/kawaz/.claude-personal/skills/personal-gh-image-attach` (= symlink パス、resolve 後の実体ではない) に展開されることを確認 [実機検証済 2026-06-10]
+- `personal-gh-image-attach` skill で `${CLAUDE_SKILL_DIR}` を SKILL.md 本文に記載 → Skill 起動時に `/Users/kawaz/.claude-personal/skills/personal-gh-image-attach` (= symlink パス、resolve 後の実体ではない) に展開されることを確認 [実機検証済: v2.1.170 2026-06-10]
 - 冒頭プロローグとして `Base directory for this skill: <path>` が自動付与される
-- `${CLAUDE_PLUGIN_ROOT}` の bash env 内では空 [実機検証済 (claude-plugin-reference)]
+- `${CLAUDE_PLUGIN_ROOT}` の bash env 内では空 [実機検証済: v2.1.170 (claude-plugin-reference)]
 
 ## 5. Dynamic Context Injection (`!`command``)
 
@@ -200,7 +202,7 @@ skill 本文中で `!`command`` または ` ```! ` fenced block を書くと、*
 [spec]
 
 **実機検証 (cmux-msg)**:
-- `disable-model-invocation: true` を付けた 6 user skill (`/cmux-msg-peers` 等) は **AI の system-reminder available skills 一覧に出てこない** (= description 含めて context 食わない) → ユーザ専用 slash command として最適 [実機検証済]
+- `disable-model-invocation: true` を付けた 6 user skill (`/cmux-msg-peers` 等) は **AI の system-reminder available skills 一覧に出てこない** (= description 含めて context 食わない) → ユーザ専用 slash command として最適 [実機検証済: ~v2.1.156]
 - 大本 `skills/cmux-msg/SKILL.md` (= disable-model-invocation 無し) は AI 一覧に出る、`/cmux-msg:cmux-msg` で full namespace 表示
 
 ### 6.1 `disallowed-tools` の実機挙動 [実機検証済: v2.1.170]
@@ -228,7 +230,7 @@ skill frontmatter の `disallowed-tools` に挙げた tool は、その skill �
 ## 8. Skill cache の reload 挙動 (実機検証)
 
 - claude session 起動時に PATH に plugin bin が追加される
-- plugin update が走っても **既存 session 内の Skill 解決先は古い cache (= 古い version path) を見続ける** [実機検証済 (cmux-msg)]
+- plugin update が走っても **既存 session 内の Skill 解決先は古い cache (= 古い version path) を見続ける** [実機検証済: ~v2.1.156 (cmux-msg)]
 - `/reload-plugins` (interactive command、AI からは叩けない) で最新 version cache に切替
 - session restart でも同様に最新化
 - = SKILL.md 本文に `${CLAUDE_PLUGIN_ROOT}/bin/...` を書いておけば、reload 後の skill invocation 時には新 version の絶対パスが embed される (= 古い cache 問題に巻き込まれない設計)
@@ -283,6 +285,20 @@ Research $ARGUMENTS:
 | `off` | hidden | hidden |
 
 [spec]
+
+## `[未検証]` 集約 (メンテ TODO 抽出用)
+
+未検証項目を 1 箇所に集約 (= 格上げ対象の機械抽出用)。`[未検証: headless 不可]` は構造的に検証不能、`[未検証: TODO]` はやれば検証できる。
+
+### headless 不可
+
+- (現状なし)
+
+### TODO
+
+- [ ] `skillOverrides` の各 value (`on` / `name-only` / `user-invocable-only` / `off`) の実機挙動 (§10、現状 [spec])
+- [ ] `paths` glob による skill auto-invoke 限定の実機挙動 (§3、現状 [spec])
+- [ ] compaction 時の skill re-attach token budget (5,000 / combined 25,000) の実測 (§7、現状 [spec])
 
 ## 11. 参考 URL (出典)
 

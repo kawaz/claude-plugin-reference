@@ -3,6 +3,8 @@
 cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス。各 event について「タイミング / 主要用途 / 何ができるか / JSON input/output schema」を整理。
 
 > `[spec]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認、`[実装の副産物]` = spec 保証なしの挙動
+> - 無ラベル行の既定は `[spec]` (公式 docs 由来)。記憶・推測由来の項目は `[未検証]` を明示する。
+> - `[実機検証済: ~vX.Y.Z]` の `~` は記述導入時期からの推定バージョン (当時の再検証記録ではない)。
 
 ## 1. 配置と発見順序
 
@@ -27,10 +29,10 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 |---|---|---|---|---|---|
 | `SessionStart` | `startup` / `resume` / `clear` / `compact` | session 開始 / resume / clear / compact 後 | env 初期化 / meta 書き込み / direnv 連携 / skill 動的設置 | additionalContext で文脈 inject / `sessionTitle` で title 設定 / `reloadSkills:true` で skill 再スキャン (= §6.2、[実機検証済: v2.1.170]) | × (exit 2 は stderr 表示のみ) |
 | `SessionEnd` | (なし) | session 終了直前 | cleanup / 永続化 | (output 無視) | × |
-| `post-session` | (なし) | **session 終了後・workspace 削除前** (self-hosted runner 専用) | 未コミット成果の snapshot / log export | 子プロセスの SIGTERM→SIGKILL 猶予 (既定 5s) を設定可 | [未検証] |
+| `post-session` | (なし) | **session 終了後・workspace 削除前** (self-hosted runner 専用) | 未コミット成果の snapshot / log export | 子プロセスの SIGTERM→SIGKILL 猶予 (既定 5s) を設定可 | [未検証: headless 不可] |
 | `Setup` | `init` / `maintenance` | `--init-only` or `-p --init/--maintenance` 実行時 | 初期化処理 | (用途限定) | × |
 
-> **`post-session` (changelog 2.1.169) [未検証]**: self-hosted runner (CI runner 等) のライフサイクルで、session 終了 → workspace 削除の **間** に走る lifecycle hook。ローカル対話 / headless `claude -p` には「workspace 削除フェーズ」が存在しないため **構造的に実機検証不能** (= 個人環境では発火させられない)。公式 hooks reference (code.claude.com/docs/en/hooks.md) にも未記載で、出典は CHANGELOG 2.1.169 のみ。
+> **`post-session` (changelog 2.1.169) [未検証: headless 不可]**: self-hosted runner (CI runner 等) のライフサイクルで、session 終了 → workspace 削除の **間** に走る lifecycle hook。ローカル対話 / headless `claude -p` には「workspace 削除フェーズ」が存在しないため **構造的に実機検証不能** (= 個人環境では発火させられない)。公式 hooks reference (code.claude.com/docs/en/hooks.md) にも未記載で、出典は CHANGELOG 2.1.169 のみ。
 > **SessionEnd との差**: `SessionEnd` は session 終了「直前」に走り output は無視される汎用 cleanup フック。`post-session` は session 終了「後」かつ runner が workspace を破棄する「前」という self-hosted runner 限定のタイミングで、未コミット作業の退避 / ログ持ち出しと、子プロセス強制終了の猶予時間調整を目的とする。
 
 ### 2.2 ユーザ入力系
@@ -63,31 +65,31 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 
 | event | matcher | タイミング | 主要用途 | 何ができるか | blockable |
 |---|---|---|---|---|---|
-| `PreCompact` | (なし) | context compaction 直前 | 永続化 | additionalContext | [未検証] |
-| `PostCompact` | (なし) | compaction 完了直後 | re-init | additionalContext | [未検証] |
-| `CwdChanged` | (なし) | working dir 変更時 | direnv / env reload | `CLAUDE_ENV_FILE` 書き込みで bash tool に env 反映 | [未検証] |
+| `PreCompact` | (なし) | context compaction 直前 | 永続化 | additionalContext | [未検証: TODO] |
+| `PostCompact` | (なし) | compaction 完了直後 | re-init | additionalContext | [未検証: TODO] |
+| `CwdChanged` | (なし) | working dir 変更時 | direnv / env reload | `CLAUDE_ENV_FILE` 書き込みで bash tool に env 反映 | [未検証: TODO] |
 | `ConfigChange` | source (`user_settings` / `project_settings` / `local_settings` / `policy_settings` / `skills`) | config file が外部で変更 | reload 制御 | `decision: "block"` で block 可 | ✓ |
-| `FileChanged` | file pattern | watched file 変更 | リアクション処理 | additionalContext | [未検証] |
+| `FileChanged` | file pattern | watched file 変更 | リアクション処理 | additionalContext | [未検証: TODO] |
 | `WorktreeCreate` | (なし) | git worktree 作成時 | hook into worktree setup | default git behavior を replace 可 | ✓ |
-| `WorktreeRemove` | (なし) | git worktree 削除時 | cleanup | [未検証] | [未検証] |
-| `InstructionsLoaded` | reason (`session_start` / `nested_traversal` / `path_glob_match` / `include` / `compact`) | CLAUDE.md / rules がコンテキスト load 時 | rule 監査 | [未検証] | [未検証] |
+| `WorktreeRemove` | (なし) | git worktree 削除時 | cleanup | [未検証: TODO] | [未検証: TODO] |
+| `InstructionsLoaded` | reason (= source 値セットの正本: `session_start` / `nested_traversal` / `path_glob_match` / `include` / `compact`) | CLAUDE.md / rules がコンテキスト load 時 | rule 監査 | [未検証: TODO] | [未検証: TODO] |
 
 ### 2.6 Subagent / Task 系
 
 | event | matcher | タイミング | 主要用途 | 何ができるか | blockable |
 |---|---|---|---|---|---|
-| `SubagentStart` | agent type | subagent spawn 直前 | log / 拒否 | [未検証] | [未検証] |
-| `SubagentStop` | agent type | subagent 終了直後 | result 加工 | `decision: "block"` + `reason` で subagent turn 再開、または `hookSpecificOutput.additionalContext` で feedback 注入し継続 (= Stop と同等)。発火は [実機検証済: v2.1.170]、additionalContext の注入先は subagent コンテキスト [spec] | ✓ [spec] (block での turn 再開は実機未確認) |
-| `TaskCreated` | (なし) | TaskCreate 生成直前 | task 監査 | [未検証] | [未検証] |
-| `TaskCompleted` | (なし) | task completion 直前 | result 確認 | [未検証] | [未検証] |
-| `TeammateIdle` | (なし) | teammate idle 状態 | スケジューリング | [未検証] | [未検証] |
+| `SubagentStart` | agent type | subagent spawn 直前 | log / 拒否 | [未検証: TODO] | [未検証: TODO] |
+| `SubagentStop` | agent type | subagent 終了直後 | result 加工 | `decision: "block"` + `reason` で subagent turn 再開、または `hookSpecificOutput.additionalContext` で feedback 注入し継続 (= Stop と同等)。発火は [実機検証済: v2.1.170]、additionalContext の注入先は subagent コンテキスト [spec] | ✓ [spec、block 動作は未検証] |
+| `TaskCreated` | (なし) | TaskCreate 生成直前 | task 監査 | [未検証: TODO] | [未検証: TODO] |
+| `TaskCompleted` | (なし) | task completion 直前 | result 確認 | [未検証: TODO] | [未検証: TODO] |
+| `TeammateIdle` | (なし) | teammate idle 状態 | スケジューリング | [未検証: TODO] | [未検証: TODO] |
 
 ### 2.7 MCP 系
 
 | event | matcher | タイミング | 主要用途 | 何ができるか | blockable |
 |---|---|---|---|---|---|
-| `Elicitation` | mcp server 名 | MCP server がユーザ input request 時 | UI 介入 | [未検証] | [未検証] |
-| `ElicitationResult` | mcp server 名 | ユーザ応答後、server に返す前 | filter | [未検証] | [未検証] |
+| `Elicitation` | mcp server 名 | MCP server がユーザ input request 時 | UI 介入 | [未検証: TODO] | [未検証: TODO] |
+| `ElicitationResult` | mcp server 名 | ユーザ応答後、server に返す前 | filter | [未検証: TODO] | [未検証: TODO] |
 
 ### 2.8 その他
 
@@ -194,17 +196,17 @@ tool 引数で filter:
 | 変数 | 値 | 範囲 |
 |---|---|---|
 | `CLAUDE_PROJECT_DIR` | project root (= git toplevel or cwd) | 全 hook |
-| `CLAUDE_PLUGIN_ROOT` | `~/.claude/plugins/cache/<id>/<version>/` | plugin hook のみ |
-| `CLAUDE_PLUGIN_DATA` | `~/.claude/plugins/data/<id>/` (= plugin update でも保持) | plugin hook のみ |
+| `CLAUDE_PLUGIN_ROOT` | `$CLAUDE_CONFIG_DIR/plugins/cache/<id>/<version>/` | plugin hook のみ |
+| `CLAUDE_PLUGIN_DATA` | `$CLAUDE_CONFIG_DIR/plugins/data/<id>/` (= plugin update でも保持) | plugin hook のみ |
 | `CLAUDE_ENV_FILE` | temp file path、source して env 反映 | CwdChanged / SessionStart 等 |
 
-[実機検証済 (cmux-msg)] hook 起動時の cwd は **stdin の `cwd` field と一致しない可能性** — hook 内で操作したい場合は `cd "$cwd"` で明示移動が必要。
+[実機検証済: ~v2.1.156 (cmux-msg)] hook 起動時の cwd は **stdin の `cwd` field と一致しない可能性** — hook 内で操作したい場合は `cd "$cwd"` で明示移動が必要。
 
 ## 6. JSON input schema
 
 ### 6.1 共通フィールド
 
-全 event 共通で必ず来るのは `session_id` / `cwd` / `hook_event_name` / `transcript_path` の 4 つ [実機検証済: v2.1.170]。`permission_mode` / `effort` は **event とモデルに依存**して来る/来ない。
+`session_id` / `cwd` / `hook_event_name` / `transcript_path` の 4 つは、**`SessionStart` / `UserPromptSubmit` / `PreToolUse` / `Stop` の 4 event で実測**して全て揃っていた [実機検証済: v2.1.170]。「全 event 共通フィールド」という一般化自体は公式 hooks docs の共通フィールド表 [spec] によるもので、上記 4 event 以外への一般化はその spec 記述が根拠 (= 全 event を個別に実測したわけではない)。`permission_mode` / `effort` は **event とモデルに依存**して来る/来ない。
 
 ```json
 {
@@ -219,9 +221,9 @@ tool 引数で filter:
 
 | field | 範囲 | 備考 |
 |---|---|---|
-| `session_id` / `cwd` / `hook_event_name` / `transcript_path` | 全 event | [実機検証済: v2.1.170] |
-| `permission_mode` | 一部 event のみ | 有効値 6 種: `default` / `plan` / `acceptEdits` / `auto` / `dontAsk` / `bypassPermissions` [spec]。**`SessionStart` には来ない** [実機検証済: v2.1.170]。各 event の JSON 例で要確認 [spec] |
-| `effort` | tool-use 文脈の event (`PreToolUse` / `PostToolUse` / `Stop` / `SubagentStop`) かつ effort 対応モデル時のみ | `{"level": ...}`。opus で `high` を観測、haiku では欠落 [実機検証済: v2.1.170]。`$CLAUDE_EFFORT` env でも参照可 [spec] |
+| `session_id` / `cwd` / `hook_event_name` / `transcript_path` | 全 event ([spec] の共通フィールド表) | 4 event (`SessionStart` / `UserPromptSubmit` / `PreToolUse` / `Stop`) で実測 [実機検証済: v2.1.170]、全 event への一般化は [spec] |
+| `permission_mode` | 一部 event のみ | **有効値 6 種 (= permission_mode 値セットの正本)**: `default` / `plan` / `acceptEdits` / `auto` / `dontAsk` / `bypassPermissions` [spec]。**`SessionStart` には来ない** [実機検証済: v2.1.170]。各 event の JSON 例で要確認 [spec] |
+| `effort` | tool-use 文脈の event (`PreToolUse` / `PostToolUse` / `Stop` / `SubagentStop`) かつ effort 対応モデル時のみ | `{"level": ...}`。**effort 値セットの正本** = `low` / `medium` / `high` / `xhigh` / `max` [spec、`xhigh` の出典は公式 docs 由来で実機未観測]。opus で `high` を観測、haiku では欠落 [実機検証済: v2.1.170]。`$CLAUDE_EFFORT` env でも参照可 [spec] |
 | `agent_id` / `agent_type` | subagent 文脈で発火する hook のみ非 null | main thread では両方 `null`。subagent (`--agent` / Task) 内では `agent_type` に agent 名 (custom subagent は frontmatter の `name`) [実機検証済: v2.1.170。Task `general-purpose` 内 PreToolUse で確認] |
 
 > **注 (負の確定事実)**: `claude_config_dir` / `project_root` という field は **どの event の stdin にも来ない** (公式 hooks docs の共通フィールド表にも無い) [実機検証済: v2.1.170]。それらしき記述を二次情報で見ても追加しないこと。config dir / project root が要るなら env (`$CLAUDE_PROJECT_DIR` 等、§5) を使う。
@@ -368,7 +370,7 @@ output `hookSpecificOutput` 固有フィールド [実機検証済: v2.1.170]:
 | `allow` | permission prompt skip。**deny rule は依然有効** (= hook は restriction を tighten はできるが loosen はできない) |
 | `deny` | tool call block。**bypassPermissions mode でも有効** (= policy として enforce) |
 | `ask` | normal permission prompt flow |
-| `defer` | non-interactive mode (`-p` flag) でのみ有効 |
+| `defer` | 公式 hooks docs が `permissionDecision` の有効値として列挙 [spec] (allow/deny/ask/defer)。ただし `defer` の具体的挙動 (= 何に委譲するか) は docs の該当節に明記がなく、「non-interactive mode (`-p` flag) でのみ有効」という従来記述は裏取りできていない [未検証: TODO] |
 
 ## 8. Hook の強制力 (Permission との関係)
 
@@ -400,10 +402,11 @@ PreToolUse:Bash hook error: [${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh]: BLOCK: 
 ```json
 {
   "type": "command",
-  "command": "${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh #push-guard"
+  "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/push-guard.sh\" #push-guard"
 }
 ```
 
+- パスは **必ず `"..."` でクオート**する (`"${CLAUDE_PLUGIN_ROOT}/.../xxx.sh"`)。展開後の実体パスに空白が含まれる環境で word splitting して壊れるのを防ぐ。
 - bash shell-form では `#` 以降が comment 扱い = script 実行に影響しない [実機検証済: v2.1.170。settings.json hook で `echo X #marker` を発火 → 出力は `X` のみ。加えて kawaz/claude-push-guard v0.3.1 / 本リポの SessionStart hook で配備、block/inject とも正常動作]
 - claude runtime の error 表示は **展開前 command string を `[...]` に literal でそのまま出す**ので、`#push-guard` がそこに見える = plugin 名を識別可 [実機検証済: v2.1.170。下記参照]
 
@@ -423,14 +426,14 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 
 **制約**:
 - shell-form (= `command: "..."` のみ) で有効。exec-form (= `command` + `args` 同時指定) では `#` が **literal 引数として渡される** (comment 化されない) → exec-form では別経路 (= env var inject 等) が必要 [実機検証済: v2.1.170。`args:["a","#marker","b"]` を仕込むと script の argv が `[a] [#marker] [b]` で受理されることを確認]
-- **plugin 経由 (`${CLAUDE_PLUGIN_ROOT}` 付き) で、error ヘッダに展開前 (literal `${CLAUDE_PLUGIN_ROOT}`) と展開後 (実体パス) のどちらが出るかは plugin install 環境が必要なため本ハーネスでは [未検証]**。確認できたのは「error ヘッダに command 文字列が literal で出て、末尾 `#marker` もそこに含まれる」という共通部分まで
+- **plugin 経由 (`${CLAUDE_PLUGIN_ROOT}` 付き) で、error ヘッダに展開前 (literal `${CLAUDE_PLUGIN_ROOT}`) と展開後 (実体パス) のどちらが出るかは plugin install 環境が必要なため本ハーネスでは [未検証: TODO]**。確認できたのは「error ヘッダに command 文字列が literal で出て、末尾 `#marker` もそこに含まれる」という共通部分まで
 - runtime の error message format が将来変わると無効化される可能性 [実装の副産物に依存]
 - 本来は claude runtime が展開後パスを表示するか hook output に plugin name を付けるべき (= upstream に feedback したい話)
 
 ### 9.1 その他のハマり所
 
 - **JSON output に shell profile の echo が混入** → invalid JSON、hook output 無視。`if [[ $- == *i* ]]; then echo ...; fi` で interactive-only guard を [実機検証推奨]
-- **hook command の wd は stdin の `cwd` と違う** → `cd "$cwd" && ...` で明示移動 [実機検証済 (cmux-msg)]
+- **hook command の wd は stdin の `cwd` と違う** → `cd "$cwd" && ...` で明示移動 [実機検証済: ~v2.1.156 (cmux-msg)]
 - **多 hook の updatedInput 衝突** → 最後に finish した hook が勝つ (= deterministic order なし、coordinator hook を 1 つに集約推奨) [spec]
 - **Stop hook の max 8 連続 block** → 9 回目で自動 continue、`stop_hook_active` field で判定可 [spec]
 
@@ -440,13 +443,12 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 
 | field | 含まれる event | 値の例 |
 |---|---|---|
-| **`session_id`** | 全 event (共通) [実機検証済: v2.1.170] | UUID v4 |
-| **`cwd`** | 全 event (共通) [実機検証済: v2.1.170] | event 起動時の cwd |
-| **`hook_event_name`** | 全 event (共通) [実機検証済: v2.1.170] | `"PreToolUse"` 等 |
-| **`transcript_path`** | 全 event (共通) [実機検証済: v2.1.170] | `.jsonl` ファイルパス |
+| **`session_id`** | 全 event (共通) — 4 event 実測 [実機検証済: v2.1.170] + 全 event 一般化は [spec] | UUID v4 |
+| **`cwd`** | 全 event (共通) — 4 event 実測 [実機検証済: v2.1.170] + 全 event 一般化は [spec] | event 起動時の cwd |
+| **`hook_event_name`** | 全 event (共通) — 4 event 実測 [実機検証済: v2.1.170] + 全 event 一般化は [spec] | `"PreToolUse"` 等 |
+| **`transcript_path`** | 全 event (共通) — 4 event 実測 [実機検証済: v2.1.170] + 全 event 一般化は [spec] | `.jsonl` ファイルパス |
 | **`permission_mode`** | 一部 event (`SessionStart` には来ない) [実機検証済: v2.1.170] | `default` / `plan` / `acceptEdits` / `auto` / `dontAsk` / `bypassPermissions` の 6 値 [spec] |
 | **`effort`** | tool-use 文脈 event (`PreToolUse` / `PostToolUse` / `Stop` / `SubagentStop`) + effort 対応モデル時のみ [実機検証済: v2.1.170] | `{"level":"low\|medium\|high\|xhigh\|max"}` |
-| **`agent_id`** / **`agent_type`** | subagent 文脈の hook のみ非 null (main は `null`) [実機検証済: v2.1.170] | agent 識別子 / agent 名 (`"general-purpose"` 等) |
 | `tool_name` | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `PermissionRequest` / `PermissionDenied` | `"Bash"` 等 |
 | `tool_input` | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | `{"command": "npm test"}` 等 |
 | `tool_use_id` | `PreToolUse` で観測 [実機検証済: v2.1.170] | `"toolu_..."` |
@@ -455,7 +457,7 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 | `permission_prompt_type` | `PermissionRequest` | dialog 種別 |
 | `reason` | `PermissionDenied` | deny 理由 |
 | `prompt` | `UserPromptSubmit` / `UserPromptExpansion` | user 入力 text |
-| `source` | `SessionStart` (`startup`/`resume`/`clear`/`compact`) / `Setup` (`init`/`maintenance`) / `ConfigChange` (`user_settings`/...) / `InstructionsLoaded` (`session_start`/`compact`/...) | event ごとに値が違う |
+| `source` | `SessionStart` (`startup`/`resume`/`clear`/`compact`) / `Setup` (`init`/`maintenance`) / `ConfigChange` (`user_settings`/...、正本は §6.2 ConfigChange) / `InstructionsLoaded` (正本は §2.5 の reason 値セット) | event ごとに値が違う |
 | `conversation_length` | `Stop` [spec] | turn 数 |
 | `stop_hook_active` | `Stop` [実機検証済: v2.1.170] | bool、`true` なら既 block 中 |
 | `last_assistant_message` / `background_tasks` / `session_crons` | `Stop` [実機検証済: v2.1.170] | 直近 assistant message / 実行中 BG task 配列 / cron 配列 |
@@ -501,12 +503,12 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 |---|---|---|
 | `PreToolUse` | **tool call block** | claude に reason (stderr) 返す |
 | `PostToolUse` | **turn block** | claude に reason 返して turn 再開 |
-| `PostToolUseFailure` | turn block [未検証] | |
-| `PostToolBatch` | turn block [未検証] | |
+| `PostToolUseFailure` | turn block [未検証: TODO] | |
+| `PostToolBatch` | turn block [未検証: TODO] | |
 | `UserPromptSubmit` | **turn 拒否** | prompt を claude に渡さず終了 |
 | `UserPromptExpansion` | **block** | command 展開を中断 |
 | `PermissionRequest` | **deny 扱い** | permission dialog を deny で終わらせる |
-| `PermissionDenied` | [未検証] | retry に効くか未確認 |
+| `PermissionDenied` | [未検証: TODO] | retry に効くか未確認 |
 | `ConfigChange` | **block** | config reload を中断 |
 | `WorktreeCreate` | **block** (= default git behavior を replace) | hook が完全に worktree create を肩代わり |
 | `Stop` | **turn 再開** | 最大 8 連続 block 後に自動 continue (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` で cap 調整可) |
@@ -515,7 +517,7 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 | `SessionEnd` | **ignored** | output / exit code 完全無視 |
 | `StopFailure` | **ignored** | 同上 |
 | `Notification` | **block 不可** | stderr 表示のみ |
-| その他の lifecycle event (PreCompact / CwdChanged / FileChanged 等) | [未検証] | 多くは [実装の副産物] と思われる |
+| その他の lifecycle event (PreCompact / CwdChanged / FileChanged 等) | [未検証: TODO] | 多くは [実装の副産物] と思われる |
 
 `exit !0, !2` (= その他 exit code) は全 event 共通で **non-blocking warning**: stderr 1 行目が transcript に記録、execution 継続。
 
@@ -523,11 +525,27 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 
 ### 10.4 hook type × event (= prompt / agent hook が使える event)
 
-| event | command (default) | http | mcp_tool | prompt | agent |
-|---|---|---|---|---|---|
-| 全 event | ✓ | ✓ | ✓ | ✓ ([未検証] 一部 event のみ?) | ✓ ([未検証] 一部 event のみ?) |
+`command` / `http` / `mcp_tool` は全 event で使える前提。`prompt` / `agent` が全 event で使えるか・一部 event 限定かは [未検証: TODO]。通常は `command` 形式で十分。`prompt` / `agent` は AI に判断させる場面 (= 「Stop hook で task 完了したか claude に判定させる」等) で使う。詳細は §4 と公式 docs 参照。
 
-通常は `command` 形式で十分。`prompt` / `agent` は AI に判断させる場面 (= 「Stop hook で task 完了したか claude に判定させる」等) で使う。詳細は §4 と公式 docs 参照。
+## 10.5 `[未検証]` 集約 (メンテ TODO 抽出用)
+
+未検証項目を 1 箇所に集約 (= 格上げ対象の機械抽出用)。`[未検証: headless 不可]` は対話 UI / runner ライフサイクル等で構造的に検証不能、`[未検証: TODO]` はやれば検証できる。
+
+### headless 不可 (= 構造的に検証不能)
+
+- [ ] `post-session` event — self-hosted runner の workspace 削除フェーズが必要 (§2.1)
+
+### TODO (= 検証可能、格上げ対象)
+
+- [ ] `PreCompact` / `PostCompact` / `CwdChanged` / `FileChanged` の出力解釈・blockable (§2.5)
+- [ ] `WorktreeRemove` / `InstructionsLoaded` の出力解釈・blockable (§2.5)
+- [ ] `SubagentStart` / `TaskCreated` / `TaskCompleted` / `TeammateIdle` の出力解釈・blockable (§2.6)
+- [ ] `Elicitation` / `ElicitationResult` の挙動 (MCP server 必要、§2.7)
+- [ ] `SubagentStop` の `decision: "block"` での turn 再開 (§2.6)
+- [ ] `permissionDecision: defer` の具体挙動 (§7.3)
+- [ ] plugin 経由 (`${CLAUDE_PLUGIN_ROOT}` 付き) hook の error ヘッダに展開前/展開後どちらのパスが出るか (§9.0)
+- [ ] `exit 2` の効果: `PostToolUseFailure` / `PostToolBatch` / `PermissionDenied` / その他 lifecycle event (§10.3)
+- [ ] `prompt` / `agent` hook type が全 event で使えるか (§10.4)
 
 ## 11. 参考 URL (出典)
 

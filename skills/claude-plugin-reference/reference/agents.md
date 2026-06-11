@@ -1,5 +1,9 @@
 # エージェント編 — plugin が配る subagent
 
+> `[spec]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認、`[実装の副産物]` = spec 保証なしの挙動
+> - 無ラベル行の既定は `[spec]` (公式 docs 由来)。記憶・推測由来の項目は `[未検証]` を明示する。
+> - `[実機検証済: ~vX.Y.Z]` の `~` は記述導入時期からの推定バージョン (当時の再検証記録ではない)。
+
 plugin は専用の subagent (カスタムエージェント) を同梱できる。skill が「context に流し込む手順書」なのに対し、agent は「別 context window で動く専用ワーカー」。Claude が task に応じて自動委譲したり、ユーザが明示的に呼び出したりする。
 
 ## 配置 (Location)
@@ -59,13 +63,13 @@ You are a security reviewer. 変更を分析し、脆弱性・権限昇格・入
 | `tools` | No | 使えるツール。**省略時は全継承**。Skill の preload は `Skill` を列挙せず `skills` field を使う | ○ |
 | `disallowedTools` | No | 拒否するツール。継承/指定リストから除外 | ○ |
 | `model` | No | `sonnet` / `opus` / `haiku` / full model ID (例 `claude-opus-4-8`) / `inherit`。**既定 `inherit`** | ○ |
-| `effort` | No | `low` / `medium` / `high` / `xhigh` / `max`。session の effort を上書き。利用可能段階は model 依存 | ○ |
+| `effort` | No | `low` / `medium` / `high` / `xhigh` / `max`。session の effort を上書き。利用可能段階は model 依存 (値セットの正本は [hooks.md §6.1](hooks.md#61-共通フィールド)) | ○ |
 | `maxTurns` | No | 停止までの最大 agentic turn 数 | ○ |
 | `skills` | No | 起動時に context へ preload する skill。**description だけでなく skill 本文全体が注入**される。未列挙の skill も Skill tool 経由で呼べる | ○ |
 | `memory` | No | 永続メモリスコープ `user` / `project` / `local`。セッション横断学習 | ○ |
 | `background` | No | `true` で常に background task として実行。既定 `false` | ○ |
 | `isolation` | No | `worktree` で一時 git worktree 上で実行 (default branch 基点の独立コピー、無変更なら自動削除)。**plugin agent では値は `"worktree"` のみ許可** | △ |
-| `permissionMode` | No | `default` / `acceptEdits` / `auto` / `dontAsk` / `bypassPermissions` / `plan` | **✕ plugin では無視** |
+| `permissionMode` | No | 6 値: `default` / `plan` / `acceptEdits` / `auto` / `dontAsk` / `bypassPermissions` (= permission_mode 値セットの正本は [hooks.md §6.1](hooks.md#61-共通フィールド)) | **✕ plugin では無視** |
 | `mcpServers` | No | この subagent が使う MCP server (名前参照 or inline 定義) | **✕ plugin では無視** |
 | `hooks` | No | この subagent にスコープされた lifecycle hook | **✕ plugin では無視** |
 
@@ -86,7 +90,7 @@ plugin が配る agent は **`<plugin-name>:<agent-name>`** で参照される�
 
 - `name` frontmatter が agent の identity。ファイルパス/ファイル名は identity に影響しない [spec]
 - 同一スコープ内で `name` が重複すると、**片方が警告なく破棄**される。tree 全体で `name` をユニークに保つ [spec]
-- `[未検証]` plugin 内でサブフォルダ (`agents/review/perf.md`) を切ったとき、名前空間が `<plugin>:review:perf` のように階層化されるか。project/user scope では「サブフォルダは identity に影響しない」と明記 [spec] があるが、plugin scope での階層化挙動は公式に明記なし → 要実機検証
+- `[未検証: TODO]` plugin 内でサブフォルダ (`agents/review/perf.md`) を切ったとき、名前空間が `<plugin>:review:perf` のように階層化されるか。project/user scope では「サブフォルダは identity に影響しない」と明記 [spec] があるが、plugin scope での階層化挙動は公式に明記なし → 要実機検証
 
 ## 配置スコープと優先度 [spec]
 
@@ -132,12 +136,12 @@ claude agents --json --all    # 完了済みセッションも含む
 | `id` | string | **background のみ** | `"0ac2d19f"` (sessionId 先頭 8 文字) |
 | `name` | string | background かつ名前あり | `"config-setup-agents"` |
 | `state` | string | **background のみ** | `"blocked"` (他の値は未観測) |
-| `waitingFor` | string | waiting 状態時のみ (optional) | [未検証] 実機では未観測 |
+| `waitingFor` | string | waiting 状態時のみ (optional) | [未検証: TODO] 実機では未観測 |
 
 - `id`: background session の短縮識別子。`sessionId` の先頭 8 文字と一致する
 - `state`: background session の追加状態。`"blocked"` = permission prompt 等で待機中
-- `waitingFor` [未検証]: changelog 文言では「waiting session が何を待っているか (例: permission prompt)」。実機では出現条件を再現できておらず、値の形式は未確認
-- `--all` [未検証]: `--help` 文言では「完了済みセッションも含む (the full agent view list)」。完了済みセッションが併存する状態での出力差は実機未観測
+- `waitingFor` [未検証: TODO]: changelog 文言では「waiting session が何を待っているか (例: permission prompt)」。実機では出現条件を再現できておらず、値の形式は未確認
+- `--all` [未検証: TODO]: `--help` 文言では「完了済みセッションも含む (the full agent view list)」。完了済みセッションが併存する状態での出力差は実機未観測
 
 ## skill の `context: fork` + `agent:` との関係 [spec]
 
@@ -148,15 +152,21 @@ skill 側からも agent を指名できる (詳細は [skills.md](skills.md) �
 
 向きが逆の関係。`agent:` で custom agent を指す場合、その agent は上記スコープのいずれかに存在する必要がある。
 
-## `[未検証]` TODO
+## `[未検証]` 集約 (メンテ TODO 抽出用)
 
-このリポの規律として、未検証項目は格上げ前提で明示する。
+このリポの規律として、未検証項目は格上げ前提で明示する。`[未検証: headless 不可]` は対話 UI 専用で構造的に検証不能、`[未検証: TODO]` はやれば検証できる。
+
+### headless 不可
+
+- [ ] `/agents` UI 上での plugin agent の表示・有効化挙動 (対話 UI 専用)
+
+### TODO
 
 - [ ] plugin scope でのサブフォルダ → 名前空間階層化の有無 (上記名前空間節)
 - [ ] `claude plugin validate` が agent frontmatter のどこまで (必須 field 欠落 / 未サポート field) を検出するか
 - [ ] plugin agent で `hooks` / `mcpServers` / `permissionMode` を書いたとき、警告が出るか黙って無視か
 - [ ] `agents` field 指定時に既定 `agents/` が本当に走査されなくなる (replaces) かの実機確認
-- [ ] `/agents` UI 上での plugin agent の表示・有効化挙動
+- [ ] `claude agents --json` の `waitingFor` 出現条件・`--all` の完了済みセッション出力差 (§claude agents --json)
 
 ## 参考 URL (出典)
 

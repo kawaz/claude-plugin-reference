@@ -5,7 +5,7 @@
 Claude Code plugin / skill / hooks の **実機検証込み** リファレンス。
 公式 docs はふんわりしている (= 「指定したら何が効くか / いつ使えるか」が読み取りきれない) 部分が多いので、自分の plugin 開発で実機検証して確証取った一次情報を集約する。
 
-kawaz/cmux-msg, kawaz/hyoui その他自前 plugin から `${CLAUDE_PLUGIN_ROOT}/...` 経由 or skill 参照で読める。毎 plugin で同じ説明を繰り返さない。
+他 plugin / 任意セッションから skill 参照 (`claude-plugin-reference:claude-plugin-reference`) で読める。毎 plugin で同じ説明を繰り返さない。
 
 ## Install
 
@@ -41,8 +41,8 @@ skills/claude-plugin-reference/
 `SessionStart` フック (`hooks/plugin-repo-nudge.sh`) を 1 つ同梱。以下いずれかに該当するセッションで「試行錯誤せず本 skill を参照せよ」と `additionalContext` で 1 文 inject する (該当しないセッションでは沈黙):
 
 - project root に `.claude-plugin/plugin.json` 保有
-- `CLAUDE_PROJECT_DIR` のパス要素に `claude-rules-*` を含む (= rule overlay リポ作業中、リポルート直下でも発火)
-- `CLAUDE_PROJECT_DIR` のパス要素が `.claude` または `.claude-*` で始まる (= Claude 設定ディレクトリを直接触っている、例 `~/.claude-personal`)。`.claudexyz` のような dash なし接尾には発火しない
+- `CLAUDE_PROJECT_DIR` のパス要素が `claude-rules-` で**始まる** (= kawaz の rule overlay リポ命名規約由来。リポルート直下でも発火し、同名 prefix の無関係リポでも発火する)
+- `CLAUDE_PROJECT_DIR` のパス要素が `.claude` に等しい、または `.claude-` で**始まる** (= Claude 設定ディレクトリを直接触っている、例 `~/.claude-personal`)。`.claudexyz` のような dash なし接尾には発火しない
 
 plugin / skill / hooks 開発で reference を見ずにトライ&エラーする事故を入口で防ぐのが狙い。
 

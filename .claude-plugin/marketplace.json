@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "claude-plugin-reference",
-      "description": "kawaz の Claude Code plugin / hook / skill 開発用、実機検証で確証取った一次情報リファレンス",
+      "description": "Claude Code plugin / skill / hooks の実機検証込みリファレンス",
       "source": "./"
     }
   ]

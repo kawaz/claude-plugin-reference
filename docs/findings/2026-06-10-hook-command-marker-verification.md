@@ -12,7 +12,7 @@
 1. **shell-form** (`{"type":"command","command":"..."}` のみ) は shell (bash) で実行され、`#` 以降は **comment 扱い**で実行に影響しない。
    - `echo SHELLFORM_OUT_TOKEN_AAA #shellmarker-BBB` → 出力は `SHELLFORM_OUT_TOKEN_AAA` のみ。
 2. **exec-form** (`command` + `args` 配列) は **hooks 設定で受理され、shell を介さず argv を literal で渡す**。
-   - `command: "<script>"`, `args: ["execarg1", "#execmarker-CCC", "execarg3"]` → script の argv は `[execarg1] [#execmarker-CCC] [execarg3]`。`#execmarker-CCC` は comment にならず **literal 引数**として届く。
+   - `command: "<script-path>"`, `args: ["execarg1", "#execmarker-CCC", "execarg3"]` → script の argv は `[execarg1] [#execmarker-CCC] [execarg3]`。`#execmarker-CCC` は comment にならず **literal 引数**として届く。
    - → §9.0 の「exec-form では `#` が literal 引数として渡される」仮説は **裏付けられた**。
 3. **block error 表示に command 文字列が literal で出る**。PreToolUse(Bash) で `exit 2 #blockmarker-DDD` を踏ませると、error envelope は:
 
@@ -61,7 +61,7 @@
 | 形式 | 設定 | 実測 | 結論 |
 |---|---|---|---|
 | shell-form | `command: "echo X #shellmarker-BBB"` | 出力 `X` のみ | `#` 以降 comment ⇒ 影響なし |
-| exec-form | `command: "<script>"`, `args: ["a","#execmarker-CCC","b"]` | argv = `[a] [#execmarker-CCC] [b]` | `args` 受理 + `#` は literal 引数 |
+| exec-form | `command: "<script-path>"`, `args: ["a","#execmarker-CCC","b"]` | argv = `[a] [#execmarker-CCC] [b]` | `args` 受理 + `#` は literal 引数 |
 
 ### A-3 block error の literal command 表示
 
@@ -77,7 +77,7 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 
 ### B stdin dump
 
-各 event の hook に `cat > <file>` を仕込み、`claude -p` 1 回で全 event 発火 → JSON を `jq` で確認。effort 確認は opus、agent_* 確認は Task subagent 経由で再実行。
+各 event の hook に `cat > <dump-file>` を仕込み、`claude -p` 1 回で全 event 発火 → JSON を `jq` で確認。effort 確認は opus、agent_* 確認は Task subagent 経由で再実行。
 
 ## 出典
 

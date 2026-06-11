@@ -8,7 +8,7 @@ set positional-arguments
 # ---------- main tasks ----------
 
 # push (バージョン bump 済みを前提、全 gate 通過後に push してローカルも更新)
-push: ensure-clean validate test check-versions check-version-bumped check-outdated-translations check-embedded-justfile-sync
+push: ensure-clean validate test check-versions check-version-bumped check-outdated-translations check-embedded-justfile-sync check-bare-labels
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
     just on-success-release
 
@@ -26,9 +26,10 @@ version:
 validate:
     claude plugin validate .
 
-# tests/ 配下のテストを実行 (1 つでも fail したら exit 非 0)
+# tests/ 配下のテストを実行 (1 つでも fail したら exit 非 0)。
+# tests/*.test.sh が 0 件なら glob が literal のまま残るため [ -e "$f" ] で防御 (= skip)。
 test:
-    @for f in tests/*.test.sh; do bash "$f" || exit 1; done
+    @for f in tests/*.test.sh; do [ -e "$f" ] || continue; bash "$f" || exit 1; done
 
 # ---------- internal recipes (push の依存) ----------
 
@@ -42,10 +43,13 @@ ensure-clean:
 check-versions:
     @bump-semver get .claude-plugin/plugin.json .claude-plugin/marketplace.json --no-hint >/dev/null
 
-# release 成功後の local 反映: marketplace + plugin を update (CI 無しは push から直接 / CI ありは watch 経由)
+# release 成功後の local 反映: marketplace + plugin を update (CI 無しは push から直接 / CI ありは watch 経由)。
+# 各 update は warn 降格: push は既に成功済なので、ここで失敗しても release 自体は完了している。
+# (失敗時に exit 非 0 にすると「push 済みなのに just push 失敗表示 → 再実行は version gate で弾かれ詰む」)。
+# 単独再実行可: `just on-success-release` でこの local 反映だけやり直せる。
 on-success-release:
-    claude plugin marketplace update claude-plugin-reference
-    claude plugin update claude-plugin-reference@claude-plugin-reference
+    @claude plugin marketplace update claude-plugin-reference || echo "[warn] marketplace update 失敗。push は成功済み。'just on-success-release' で単独再実行可" >&2
+    @claude plugin update claude-plugin-reference@claude-plugin-reference || echo "[warn] plugin update 失敗。push は成功済み。'just on-success-release' で単独再実行可" >&2
     @echo ""
     @echo "[hint] /reload-plugins to apply in this session without restart"
 
@@ -87,24 +91,78 @@ check-embedded-justfile-sync:
       exit 1
     fi
 
+# skills/ 内の「裸の検証ラベル」を検出して fail させる (= バージョン併記の徹底)。
+# 許容形式: `[実機検証済: vX.Y.Z]` / `[実機検証済: ~vX.Y.Z]` (= コロン + 任意で ~ + v 始まり)。
+# fail 対象: `[実機検証済]` (裸) / `[実機検証済 2026-...]` (日付のみ) / `[実機検証済 (plugin名)]` 等。
+#
+# Design rationale: grep -P (PCRE 否定先読み) は [script] recipe の sh で /usr/bin/grep (BSD)
+# に解決され使えない。BSD/GNU 両対応のため「全 `[...]` ラベルを -oE で抽出 → 許容形式を -v で除外」
+# の 2 段 grep にする。さらに以下は意図的な非ラベルなので除外 (= false positive 回避):
+#   - ラベル凡例行 (`[spec]` と `[未検証]` が同一行に並ぶ定義行)
+#   - 記法例の行 (`例:` を含む説明行)
+#   - コードフェンス (```) 内の行 (= 埋め込み justfile 等のコード例。本 recipe 自身のパターン
+#     文字列が embedded justfile 経由で skills/ に現れるため、除外しないと自己検知する)
+[private]
+[script]
+check-bare-labels:
+    bad=$(grep -rnoE '\[実機検証済[^]]*\]' skills/ \
+      | grep -vE '\[実機検証済: ~?v' \
+      | while IFS= read -r line; do
+          [ -n "$line" ] || continue
+          file=${line%%:*}
+          rest=${line#*:}
+          lno=${rest%%:*}
+          in_fence=$(awk -v n="$lno" 'NR>=n{exit} /^```/{f=1-f} END{print f+0}' "$file")
+          [ "$in_fence" = "1" ] && continue
+          src=$(sed -n "${lno}p" "$file")
+          printf '%s' "$src" | grep -qE '\[spec\].*\[未検証\]' && continue
+          printf '%s' "$src" | grep -qE '例[:： ]' && continue
+          printf '%s\n' "$line"
+        done)
+    if [ -n "$bad" ]; then
+      echo 'ERROR: skills/ bare verification labels found (accepted: [実機検証済: vX.Y.Z] / [実機検証済: ~vX.Y.Z])' >&2
+      printf '%s\n' "$bad" >&2
+      exit 1
+    fi
+
 # ---------- reference freshness ----------
 
-# SKILL.md の最終検証スタンプと claude --version を semver 比較し、陳腐化を検出する。
+# SKILL.md の最終検証スタンプと「現行 Claude Code バージョン」を semver 比較し、陳腐化を検出する。
 # 現行 = スタンプ → fresh (exit 0) / 現行 > スタンプ → stale (exit 1) /
 # 現行 < スタンプ → fresh 扱い (= 現行側が古いだけ、メンテ不要。exit 0)。
+# 比較相手は 2 系統:
+#   1. ローカル `claude --version` (= 実行環境の版)
+#   2. npm registry の `@anthropic-ai/claude-code` latest (= 世の中の最新版)。
+#      ネットワーク失敗時は warn して skip (= gate を壊さない)。
+# スタンプ抽出は `> **最終検証:` 行限定にアンカー (本文に "Claude Code vX.Y.Z" を書いても誤検出しない)。
 # push の deps には含めない (= 任意実行)。
 [script]
 check-freshness:
     current=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    stamped=$(grep -oE 'Claude Code v[0-9]+\.[0-9]+\.[0-9]+' skills/claude-plugin-reference/SKILL.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+    stamped=$(grep -E '^> \*\*最終検証:' skills/claude-plugin-reference/SKILL.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     if [ -z "$current" ]; then
       echo "ERROR: claude --version の取得に失敗しました" >&2
       exit 1
     fi
     if [ -z "$stamped" ]; then
-      echo "ERROR: SKILL.md の最終検証スタンプが見つかりません" >&2
+      echo "ERROR: SKILL.md の最終検証スタンプが見つかりません (期待行: '> **最終検証: Claude Code vX.Y.Z ...')" >&2
       exit 1
     fi
+    # --- npm registry latest との比較 (best-effort) ---
+    npm_latest=$(curl -fsS --max-time 10 https://registry.npmjs.org/@anthropic-ai/claude-code 2>/dev/null | jq -r '."dist-tags".latest' 2>/dev/null)
+    if [ -z "$npm_latest" ] || [ "$npm_latest" = null ]; then
+      echo "[warn] npm registry latest の取得に失敗 (= ネットワーク等)。npm 比較は skip" >&2
+    else
+      nrc=0
+      bump-semver compare gt "$npm_latest" "$stamped" -qq || nrc=$?
+      case "$nrc" in
+        0) echo "stale(npm): SKILL.md の最終検証 v${stamped} / npm latest v${npm_latest}"
+           echo "メンテパス実施を検討してください: docs/runbooks/cc-version-maintenance.md" ;;
+        1) echo "fresh(npm): npm latest v${npm_latest} <= スタンプ v${stamped}" ;;
+        *) echo "[warn] bump-semver compare(npm) failed (rc=$nrc)。npm 比較は skip" >&2 ;;
+      esac
+    fi
+    # --- ローカル claude --version との比較 (本 recipe の exit code を決める) ---
     if [ "$current" = "$stamped" ]; then
       echo "fresh: v${current}"
       exit 0

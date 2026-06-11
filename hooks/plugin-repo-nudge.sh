@@ -8,9 +8,18 @@
 #
 # plugin hook は enable 中の "全" セッションで発火するため、対象外では沈黙する。
 #
+# Design rationale (実装意図の備忘):
+#   - hooks.json の command 末尾 `#claude-plugin-reference` は no-op マーカー。block error
+#     ヘッダに command 文字列が literal で出る性質を使い、どの plugin の hook かを識別する
+#     ためのタグ (= 実害なし)。検証は docs/findings/2026-06-10-hook-command-marker-verification.md。
+#   - 判定はリテラルなパス文字列マッチで行い realpath 解決はしない (= symlink 名そのもので判定)。
+#     例 ~/.claude-personal/skills/foo が symlink 経由でも、見えているパス要素で発火させる意図。
+#   - SessionStart の全 source (startup / resume / clear / compact) で発火させるのは意図的。
+#     compact 後も nudge を再注入したいため (hooks.json の matcher は空文字 = 全 source 対象)。
+#
 # NOTE: set -e は使わない。フック自体の不具合はユーザ作業を巻き込まないよう無害に通過させる。
 
-cat >/dev/null 2>&1 # stdin の hook payload は使わないが drain しておく
+cat >/dev/null # stdin の hook payload は使わないが drain しておく (cat は stderr に吐かないので 2>&1 不要)
 
 root="${CLAUDE_PROJECT_DIR:-$PWD}"
 

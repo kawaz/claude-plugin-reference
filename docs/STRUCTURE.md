@@ -49,13 +49,14 @@ canonical 実装は kawaz/bump-semver の justfile。本リポでは以下 recip
 | `check-version-bumped` | trigger paths (`skills/` `README*.md` `hooks/`) 変更時に bump 必須 |
 | `check-outdated-translations` | `*-ja.md` 正本 > `*.md` 翻訳の lag を検出 |
 | `check-embedded-justfile-sync` | distribution.md の埋め込み justfile と実体の一致を検証 |
-| `check-freshness` | SKILL.md の最終検証スタンプと `claude --version` を semver 比較 (任意実行、push deps 外) |
+| `check-bare-labels` | skills/ の裸の検証ラベル (`[実機検証済]` 等、バージョン併記なし) を検出して fail |
+| `check-freshness` | SKILL.md の最終検証スタンプと `claude --version` / npm latest を semver 比較 (任意実行、push deps 外) |
 | `on-success-release` | marketplace + plugin を update |
 
 push の deps 順序:
 
 ```
-push: ensure-clean validate test check-versions check-version-bumped check-outdated-translations check-embedded-justfile-sync
+push: ensure-clean validate test check-versions check-version-bumped check-outdated-translations check-embedded-justfile-sync check-bare-labels
 ```
 
 ## 配布フロー
