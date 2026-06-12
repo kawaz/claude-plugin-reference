@@ -411,6 +411,7 @@ CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1 claude
 ### headless 不可
 
 - [ ] `/plugin list --enabled` / `--disabled` フィルタ (§plugin list、対話 UI 専用)
+- [ ] `/plugin` の marketplace 内 plugin ブラウズの検索バー (対話 UI 専用) 出典: CHANGELOG v2.1.172
 
 ### TODO
 

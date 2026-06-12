@@ -114,6 +114,15 @@ plugin が配る agent は **`<plugin-name>:<agent-name>`** で参照される�
 4. **セッション全体を agent 化**: `claude --agent <name>` または `settings.json` の `agent` key
    - plugin の `settings.json` でサポートされるのは `agent` と `subagentStatusLine` の 2 key のみ [spec]
 
+### subagent 自身による再帰 spawn (ネスト)
+
+subagent (子) も自分の context で `Agent` / `Task` tool を使い、さらに別の subagent (孫) を spawn できる (v2.1.172 で解禁。出典: CHANGELOG v2.1.172「Sub-agents can now spawn their own sub-agents (up to 5 levels deep)」)。
+
+- 子が `Agent` tool を呼んで孫を起動でき、拒否されない (= 親→子→孫の 2 段ネストが成立) [実機検証済: v2.1.174]
+- トークン文字列を孫に渡し、孫→子→親と伝言させて最終応答まで往復できる (孫での加工も保持) ことを確認 [実機検証済: v2.1.174]
+- **最大 5 階層まで** [spec] (出典: CHANGELOG v2.1.172)。上限値そのものは未検証 ([未検証: TODO] 5 階層目で拒否されるかの境界確認)
+- ネストには子が `Agent` / `Task` tool を持つことが前提。`tools` field で除外した場合に spawn 不能になるかは未観測 [未検証]
+
 ## `claude agents --json` の出力スキーマ [実機検証済: v2.1.170]
 
 スクリプトから background session の状態を取得する用途向け。
@@ -167,6 +176,7 @@ skill 側からも agent を指名できる (詳細は [skills.md](skills.md) �
 - [ ] plugin agent で `hooks` / `mcpServers` / `permissionMode` を書いたとき、警告が出るか黙って無視か
 - [ ] `agents` field 指定時に既定 `agents/` が本当に走査されなくなる (replaces) かの実機確認
 - [ ] `claude agents --json` の `waitingFor` 出現条件・`--all` の完了済みセッション出力差 (§claude agents --json)
+- [ ] subagent ネストの 5 階層上限の境界 (5 階層目で spawn が拒否されるか) (§subagent 自身による再帰 spawn)
 
 ## 参考 URL (出典)
 

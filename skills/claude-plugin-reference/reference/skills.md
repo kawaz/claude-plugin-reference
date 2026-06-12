@@ -244,6 +244,10 @@ session 再起動なしに skill ディレクトリ群を再スキャンする s
 - headless (`claude -p '/reload-skills'`) でも動作する (= 単純に再スキャンして要約を返すだけ。対話 UI 専用ではない)
 - 用途: skill を編集 / 追加した直後、同一 session 内で反映させたいとき。`/reload-plugins` (plugin 版) と対をなす
 
+### 8.2 skill hot-reload の再アナウンス粒度 [spec]
+
+単一 skill の変更時、以前は全 skill listing を context へ再送していたが、v2.1.174 で**変更された skill のみ再アナウンス**するよう修正された (出典: CHANGELOG v2.1.174)。内部挙動 (context への注入粒度) のため headless での直接観測は未実施。
+
 ## 9. Subagent execution (`context: fork`)
 
 ```yaml
