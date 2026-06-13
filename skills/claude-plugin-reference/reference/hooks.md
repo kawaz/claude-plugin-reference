@@ -173,6 +173,27 @@ tool 引数で filter:
 
 ポイント: `$VAR` / `$()` を含むだけでは発火せず、**展開後に実際にコマンド名がマッチするかどうか**で決まる。公式 docs では「コマンド名より深く指定したパターン (`Bash(git push *)` 等) は `$()`/backtick/`$VAR` を含むコマンドに対して保守的に発火する (fail-open)」とされ、パース不能なコマンドも fail-open で発火する。本検証の `git *` はコマンド名のみ指定なので、上表どおり厳密判定が効く。
 
+#### `Read(...)` / `Edit(...)` / `Write(...)` の path パターンマッチ挙動 [実機検証済: v2.1.177]
+
+file 系 tool の `if` は **tool が触る file path** を glob 比較する。CHANGELOG 2.1.176 で「`Edit(src/**)` / `Read(~/.ssh/**)` / `Read(.env)` 等の documented pattern が正しくマッチするよう修正」された。v2.1.177 で実測したマトリクス:
+
+| `if` パターン | 操作対象 | 発火 | 判定 |
+|---|---|---|---|
+| `Read(.env)` | `Read .env` | ✓ | dotfile 完全一致 |
+| `Read(.env)` | `Read src/app.ts` | × | 別 path |
+| `Read(src/**)` | `Read src/app.ts` | ✓ | 相対 glob (project dir 基準) |
+| `Read(src/**)` | `Read plain.txt` | × | glob 外 |
+| `Edit(src/**)` | `Edit src/app.ts` | ✓ | 相対 glob |
+| `Edit(src/**)` | `Edit lib/util.ts` | × | glob スコープ境界 (`src/**` は `lib/**` を弾く) |
+| `Write(out/**)` | `Write out/result.txt` | ✓ | 相対 glob |
+
+ポイント:
+- 相対 glob (`src/**` / `out/**`) は **project dir 基準**で解決される。
+- dotfile 完全一致 (`.env`) も効く。
+- glob のスコープ境界が正しく効く (`Edit(src/**)` は `lib/util.ts` の Edit を発火させない)。
+- **注意**: `Edit` tool は実行前に対象を **Read** する。そのため `Edit src/app.ts` 時には `Edit(src/**)` だけでなく `Read(src/**)` の `if` も評価・発火する。Edit 専用 hook を書いたつもりでも、同じ path に対する Read 系 `if` が先に走る点に注意。
+- `Read(~/.ssh/**)` のような **`~` ホーム展開 glob** は CHANGELOG の例示にあるが本検証では未観測 [spec]。相対 glob と dotfile 完全一致のみ実機確認済。
+
 ## 4. Hook command の type 種別
 
 | type | 主な field | timeout default | 用途 |
