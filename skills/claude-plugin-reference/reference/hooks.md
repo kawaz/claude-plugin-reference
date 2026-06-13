@@ -192,7 +192,7 @@ file 系 tool の `if` は **tool が触る file path** を glob 比較する。
 - dotfile 完全一致 (`.env`) も効く。
 - glob のスコープ境界が正しく効く (`Edit(src/**)` は `lib/util.ts` の Edit を発火させない)。
 - **注意**: `Edit` tool は実行前に対象を **Read** する。そのため `Edit src/app.ts` 時には `Edit(src/**)` だけでなく `Read(src/**)` の `if` も評価・発火する。Edit 専用 hook を書いたつもりでも、同じ path に対する Read 系 `if` が先に走る点に注意。
-- `Read(~/.ssh/**)` のような **`~` ホーム展開 glob** は CHANGELOG の例示にあるが本検証では未観測 [spec]。相対 glob と dotfile 完全一致のみ実機確認済。
+- **`~` ホーム展開 glob も効く**: `Read(~/.ssh/**)` や `Read(~/<dir>/**)` のような `~` 始まりパターンは home 展開されてマッチする (home 直下・`~/.ssh/**` の両方で発火を実機確認、`~` パターンが project 内 path を誤マッチしないことも確認)。これで CHANGELOG 2.1.176 が挙げた 3 例 (`Edit(src/**)` / `Read(.env)` / `Read(~/.ssh/**)`) すべてが実機追認済み。
 
 ## 4. Hook command の type 種別
 
