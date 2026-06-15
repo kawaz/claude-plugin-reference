@@ -351,12 +351,11 @@ rm -rf "$CLAUDE_CONFIG_DIR/skills/my-tool"
 
 ## トラブルシュート — `--safe-mode` と bundled skills 無効化
 
-フラグ / 環境変数の実在は `claude --help` で確認済み [実機検証済: v2.1.170]。無効化範囲の一覧は公式 settings docs 由来 [spec] (各項目の個別実機検証は未実施)。
+フラグ / 環境変数の実在は `claude --help` で確認済み [実機検証済: v2.1.170]。CLI 全 option のリファレンスは [cli.md](cli.md)、 `--safe-mode` vs `--bare` の比較表は [cli.md `--bare` vs `--safe-mode`](cli.md#--bare-vs---safe-mode) を参照。
 
 ### `--safe-mode` / `CLAUDE_CODE_SAFE_MODE`
 
-すべてのカスタマイズ (CLAUDE.md・skills・plugins・hooks・MCP servers・custom commands/agents 等) を
-無効にして起動する。設定壊れ・hook 暴走の診断に使う。Admin managed (policy) 設定は有効のまま。
+カスタマイズを **大半** 無効化して起動する。設定壊れ・hook 暴走の診断に使う。Admin managed (policy) 設定は有効のまま。
 
 ```bash
 # フラグで起動
@@ -366,15 +365,18 @@ claude --safe-mode
 CLAUDE_CODE_SAFE_MODE=1 claude
 ```
 
-`--safe-mode` が無効化する範囲:
+[実機検証済: v2.1.177] `--safe-mode` が無効化する範囲:
 - CLAUDE.md の自動ロード
 - すべての plugins (marketplace install 済み + skills-dir)
-- hooks
-- MCP servers (ユーザ設定分)
-- skills・custom commands・agents
+- plugin 起源の skills / hooks / MCP servers / custom commands / agents
 - output styles・workflows・custom themes・keybindings
 
-auth・model 選択・built-in tools・permissions は通常通り動く。
+[実機検証済: v2.1.177] **残る範囲** (= 完全 disable と誤解されがちな注意点):
+- **bundled skills** (= claude 同梱の `deep-research` / `update-config` / `code-review` 等) は使える
+- **managed (policy) settings 経由の hooks** は引き続き動く (debug log: `Skipping plugin hooks - safe mode disables plugins (managed settings-file hooks still run)`)
+- auth・model 選択・built-in tools・permissions は通常通り
+
+bundled skills も含めた**完全な diagnostic** が欲しい場合は次節の `disableBundledSkills` と併用する。さらに OAuth / keychain も切って API key 経路 only にしたい場合は [`--bare`](cli.md#--bare-vs---safe-mode) を使う (= こちらは LSP / auto-memory / background prefetch / attribution も止まる)。
 
 ### `disableBundledSkills` / `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS`
 
@@ -391,10 +393,12 @@ auth・model 選択・built-in tools・permissions は通常通り動く。
 CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1 claude
 ```
 
-| 設定 | plugin/user skills | bundled skills | hooks | MCP |
-|---|---|---|---|---|
-| `--safe-mode` | 無効 | 無効 | 無効 | 無効 |
-| `disableBundledSkills: true` | **有効のまま** | 無効 | 有効のまま | 有効のまま |
+| 設定 | plugin/user skills | bundled skills | plugin hooks | managed (policy) hooks | MCP |
+|---|---|---|---|---|---|
+| `--safe-mode` | 無効 | **有効のまま** | 無効 | **有効のまま** | 無効 |
+| `disableBundledSkills: true` | **有効のまま** | 無効 | 有効のまま | 有効のまま | 有効のまま |
+| `--safe-mode` + `disableBundledSkills` | 無効 | 無効 | 無効 | 有効のまま | 無効 |
+| `--bare` | `/<name>` resolve は通る | 無効 | 無効 | 無効 (= 想定) | 無効 |
 
 `/init` 等の built-in slash command は `disableBundledSkills: true` でもタイプ可能だが、
 モデルからは非表示になる。
@@ -416,7 +420,7 @@ CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1 claude
 ### TODO
 
 - [ ] `defaultEnabled: false` の install→enable 往復挙動 (現状 [spec]、install が重く未実施)
-- [ ] `--safe-mode` / `disableBundledSkills` の各無効化項目の個別実機検証 (現状 list は [spec])
+- [ ] `disableBundledSkills` 単独設定時の挙動実機検証 (`--safe-mode` 側は [実機検証済: v2.1.177] に格上げ済 → cli.md 参照)
 - [ ] **marketplace.json の `plugins[]` 配列の詳細 schema** は本ファイル未カバー
 - [ ] **plugin.json の `userConfig`** (= `${user_config.*}` の供給元) は本ファイル未カバー
 - [ ] **MCP server 同梱** (plugin が MCP server を bundle する構成) は本ファイル未カバー
