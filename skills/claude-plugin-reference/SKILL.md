@@ -1,6 +1,6 @@
 ---
 name: claude-plugin-reference
-description: Claude Code の plugin / skills / hooks / commands / agents / marketplace / CLI の実機検証済みリファレンス (field-verified reference)。SKILL.md frontmatter fields, hook events & JSON I/O schemas, matcher syntax, string substitution (${CLAUDE_PLUGIN_ROOT} 等), plugin.json / marketplace.json, 配布フロー / version bump, `claude` CLI 全 option / subcommand / `--print` モード / `--safe-mode` vs `--bare` / `--json-schema` 出力構造 を扱う。plugin 開発・hook 作成・skill 定義・CLI 使い方・仕様確認の際に必ず参照する。
+description: Claude Code の plugin / skills / hooks / commands / agents / marketplace / CLI / 組み込み slash command の実機検証済みリファレンス (field-verified reference)。SKILL.md frontmatter fields, hook events & JSON I/O schemas, matcher syntax, string substitution (${CLAUDE_PLUGIN_ROOT} 等), plugin.json / marketplace.json, 配布フロー / version bump, `claude` CLI 全 option / subcommand / `--print` モード / `--safe-mode` vs `--bare` / `--json-schema` 出力構造, 組み込み slash command 全網羅 (= `/clear` `/compact` `/plugin` `/code-review` `/fork` 等の bundled command + skill + workflow) を扱う。plugin 開発・hook 作成・skill 定義・CLI 使い方・組み込み command 確認の際に必ず参照する。
 ---
 
 > **最終検証: Claude Code v2.1.177 (2026-06-13)**
@@ -15,6 +15,7 @@ description: Claude Code の plugin / skills / hooks / commands / agents / marke
 - [commands.md](reference/commands.md) — コマンド編 (`commands/*.md` の役割 / 書式テンプレ / skills との使い分け / 3 軸構造)
 - [agents.md](reference/agents.md) — エージェント編 (plugin の agents field / agent frontmatter / 名前空間 / スコープ / 起動方法 / plugin agent の制限)
 - [cli.md](reference/cli.md) — CLI 編 (`claude` の全 option / `--print` 依存マトリクス / `--output-format=json` 構造 / `--json-schema` 出力先 / `--safe-mode` vs `--bare` / 全 subcommand)
+- [builtin-slash-commands.md](reference/builtin-slash-commands.md) — 組み込み slash command 編 (対話 UI の `/<name>` 全 ~100 件 / bundled skill / workflow / alias / 削除済 + バイナリ実装との突合)
 
 各ファイルは `[spec] / [実機検証済] / [未検証] / [実装の副産物]` のラベルで確証範囲を区別。`[未検証]` 項目は TODO、検証したら格上げ。**検証済み項目には可能な限り確認した Claude Code バージョンを併記する** (例: `[実機検証済: v2.1.170]`)。
 

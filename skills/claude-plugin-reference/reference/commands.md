@@ -1,5 +1,7 @@
 # コマンド編 — `commands/*.md` の役割 / 書式 / skills との使い分け
 
+> 本書は **plugin が定義する custom slash command** (= `commands/*.md`) の話。**組み込み slash command** (= `/clear` `/compact` `/plugin` `/code-review` 等の Anthropic 同梱) のリファレンスは [builtin-slash-commands.md](builtin-slash-commands.md) を参照。
+
 > `[spec]` = 公式 docs に明示記述、`[実機検証済]` = 自分の plugin で検証済、`[未検証]` = 公式記述頼りで実機未確認、`[実装の副産物]` = spec 保証なしの挙動
 > - 無ラベル行の既定は `[spec]` (公式 docs 由来)。記憶・推測由来の項目は `[未検証]` を明示する。
 > - `[実機検証済: ~vX.Y.Z]` の `~` は記述導入時期からの推定バージョン (当時の再検証記録ではない)。
