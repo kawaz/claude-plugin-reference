@@ -66,7 +66,7 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | `user-invocable` | bool | 任意 | false = `/` menu と listing から非表示、AI のみ invoke | background knowledge 用途 |
 | `allowed-tools` | string\|array | 任意 | skill active 中に permission 無しで使える tool | `"Bash(git add *) Bash(git commit *)"`、turn 終了で clear |
 | `disallowed-tools` | string\|array | 任意 | skill active 中に使えなくなる tool | auto-loop で危険 tool 防止。**[実機検証済: v2.1.170]** `disallowed-tools: Bash` の skill が active な間、Bash 実行は `Permission to use Bash has been denied.` で拒否される (= 次メッセージで解除)。詳細 §6.1 |
-| `model` | string | 任意 | model override | `sonnet` / `opus` / `inherit` |
+| `model` | string | 任意 | model override | **[実機検証済: v2.1.181 (cmux-msg)]** `/model` と同じ全 alias + `inherit` を受け付ける (公式 docs `/en/skills` の「Accepts the same values as `/model`」記述を実機で確認)。値: `default` / `best` / `fable` / `sonnet` / `opus` / `haiku` / `sonnet[1m]` / `opus[1m]` / `opusplan` / full model name (`claude-haiku-4-5` 等)。**注意**: `context: fork` 無しで親 context を引き継ぐ場合、メイン session の context 使用量が target model の window を超えると失敗する。詳細 §9.1 |
 | `effort` | string | 任意 | effort override | `low` / `medium` / `high` / `xhigh` / `max` (model 依存。値セットの正本は [hooks.md §6.1](hooks.md#61-共通フィールド)) |
 | `context` | string | 任意 | `fork` で subagent 実行 | parent session から isolation |
 | `agent` | string | 任意 | `context: fork` 時の subagent type | `Explore` / `Plan` / `general-purpose` / custom |
@@ -269,6 +269,47 @@ Research $ARGUMENTS:
 - 結果 summary だけ parent に return
 
 [spec]
+
+### 9.1 `context: fork` 無しで `model` を切替える時の落とし穴 [実機検証済: v2.1.181 (cmux-msg)]
+
+skill / command frontmatter で `model` field を指定すると、その invocation 中だけメインモデルが切り替わるが、**parent session の context (= 会話履歴 + skill/command 本文 + system prompt) は target model に持ち越される**。target model の context window で収まらないと invocation 失敗 → 場合によっては **メイン session が「Context limit reached」状態に陥り継続不能**。
+
+検証マトリクス (Max plan、メイン session が opus-4-7[1m] で 1M context 81% 使用中):
+
+| `model` 指定 | 挙動 |
+|---|---|
+| `haiku` | ✗ `Context limit reached` (haiku に `[1m]` alias なし、200K のみ) |
+| `sonnet` (alias) | ✗ `API Error: Usage credits required for 1M context` — sonnet[1m] は Max plan でも credit 課金、auto-upgrade 対象外 |
+| `sonnet[1m]` | ⚠ 動くが usage credit が課金される |
+| `opus` (alias) | ✓ OK (Max plan auto 1M upgrade) |
+| `claude-opus-4-*` (full name) | ✓ OK (auto 1M upgrade は full name でも効く。公式 docs の「`[1m]` suffix 必要」は API レベルの話、実機では alias / full name 問わず Max plan で 1M upgrade される) |
+
+→ **`context: fork` を併用すれば fresh subagent context になるので、上記の落とし穴を全て回避**できる (= target model の context window を親 context が圧迫しない)。
+
+事故事例: `sonnet` alias で API Error → メイン session が `/clear` も効かない「Context limit reached」状態に陥り、claude session 終了 + `/resume` で復旧。安易な model 切替は session 不安定化のリスクが高い。
+
+### 9.2 公開済 plugin の user slash command 推奨 recipe [実機検証済: v2.1.181 (cmux-msg)]
+
+「bash 1 コマンド叩いて結果を返すだけ」の薄い橋渡し系 user command (= 引数解釈ほぼ不要、独立で実行可能) の推奨 frontmatter:
+
+```yaml
+---
+description: <一行説明>
+argument-hint: <pattern>       # 任意
+disable-model-invocation: true # AI listing から hidden、user-only
+model: haiku                   # 最軽量、200K で十分
+context: fork                  # 親 context 非継承 (= これが無いと §9.1 の事故)
+agent: general-purpose         # subagent type
+---
+```
+
+メリット:
+- **メイン session の context size に依存せず安全** (= fresh subagent context、§9.1 の落とし穴を構造的に回避)
+- **haiku 最軽量** (= 安い + 早い、しかも haiku は effort 非対応で extended thinking しない、即応)
+- 比較: 同じ task を `opus` で叩いていた時は `date` 1 つに ~9 秒かかっていた (= default effort=high の extended thinking が無駄に発動)、haiku は即応
+- **AI からもユーザ補完からも見えるかは個別に制御可能** (= `disable-model-invocation` で AI hidden、`_` prefix 命名で補完候補からも先頭曖昧検索で hidden)
+
+参照: cmux-msg v0.30.12 の `commands/<sub>.md` 群がこの recipe を採用。検証履歴は `docs/findings/2026-06-18-slash-command-context-fork-and-model-validation.md`。
 
 ## 10. settings.json での skill override
 

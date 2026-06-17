@@ -58,10 +58,14 @@ allowed-tools: Read, Glob, Grep, Bash(node:*), Bash(git:*), AskUserQuestion
 | `disable-model-invocation` | bool | 任意 | true = AI 自動 invoke 不可、manual `/<plugin>:<name>` のみ | listing から description も削除 = AI context 食わない |
 | `allowed-tools` | string\|array | 任意 | このコマンド実行中に permission 無しで使える tool | turn 終了で clear |
 | `disallowed-tools` | string\|array | 任意 | このコマンド実行中に使えなくなる tool | 危険 tool 防止。skill と共通機構、実機挙動は [skills.md §6.1](skills.md#61-disallowed-tools-の実機挙動-実機検証済-v21170) ([実機検証済: v2.1.170]) |
-| `model` | string | 任意 | model override | `sonnet` / `opus` / `inherit` |
+| `model` | string | 任意 | model override | 値セットは [skills.md §3 model 行](skills.md#3-frontmatter-全-field) と同じ (= `/model` の全 alias + `inherit` + full model name)。**`context: fork` 無しでの `model` 切替の落とし穴は [skills.md §9.1](skills.md#91-context-fork-無しで-model-を切替える時の落とし穴-実機検証済-v21181-cmux-msg)** [実機検証済: v2.1.181 (cmux-msg)] |
+| `context` | string | 任意 | `fork` で subagent 実行 (skill と同じ機構) | **[実機検証済: v2.1.181 (cmux-msg)]** 公式 docs では skills 固有 field として記載されるが、commands でも動作する (= reference §1 「runtime 上同一機構」の実証)。詳細 [skills.md §9](skills.md#9-subagent-execution-context-fork) |
+| `agent` | string | 任意 | `context: fork` 時の subagent type | **[実機検証済: v2.1.181 (cmux-msg)]** `Explore` / `Plan` / `general-purpose` (default) / custom。commands でも動作 |
 
 skill との frontmatter 差分:
-- skill にある `name` / `when_to_use` / `arguments` / `paths` / `context` / `agent` / `hooks` / `shell` は command にはない (= command は file 名から決まる、subagent 化もしない)
+- skill にある `name` / `when_to_use` / `arguments` / `paths` / `hooks` / `shell` は command にはない (= command は file 名から決まる)
+- **`context: fork` / `agent` は実機では commands でも動作** (= reference §1 「runtime 上同一機構」、公式 docs では skill 固有として記載されるが commands でも有効) [実機検証済: v2.1.181 (cmux-msg)]
+- 公開済 plugin の user slash command (= bash 橋渡し系) のベスプラ recipe は [skills.md §9.2](skills.md#92-公開済-plugin-の-user-slash-command-推奨-recipe-実機検証済-v21181-cmux-msg)
 - command にある `argument-hint` は skill にもあるが、command のほうが「補完で見せる」用途が強い
 
 ## 4. 補完表示の挙動 (実機検証)
