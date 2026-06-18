@@ -3,9 +3,9 @@ name: claude-plugin-reference
 description: Claude Code の plugin / skills / hooks / commands / agents / marketplace / CLI / 組み込み slash command の実機検証済みリファレンス (field-verified reference)。SKILL.md frontmatter fields, hook events & JSON I/O schemas, matcher syntax, string substitution (${CLAUDE_PLUGIN_ROOT} 等), plugin.json / marketplace.json, 配布フロー / version bump, `claude` CLI 全 option / subcommand / `--print` モード / `--safe-mode` vs `--bare` / `--json-schema` 出力構造, 組み込み slash command 全網羅 (= `/clear` `/compact` `/plugin` `/code-review` `/fork` 等の bundled command + skill + workflow) を扱う。plugin 開発・hook 作成・skill 定義・CLI 使い方・組み込み command 確認の際に必ず参照する。
 ---
 
-> **最終検証: Claude Code v2.1.177 (2026-06-13)**
+> **最終検証: Claude Code !`cat ${CLAUDE_SKILL_DIR}/last-verified.txt`**
 >
-> このスタンプは「このバージョンまでの公式 changelog 差分を消化済み」の意であり、全項目をこのバージョンで再観測したという意味ではない。各項目の実測バージョンは個別ラベル (例 `[実機検証済: v2.1.170]`) が正。
+> このスタンプは `last-verified.txt` (1 行ロックファイル) を embed したもの。**個別事象の追記時はこの値に触れない** — 更新するのは § メンテナンス責務 を通った時だけ。各項目の実測バージョンは個別ラベル (例 `[実機検証済: vX.Y.Z (検証元 plugin)]`) が正。
 
 `${CLAUDE_SKILL_DIR}/reference/` 配下のうち、**必要なトピックのファイルのみ Read** してください (context 最小化のための二段構成)。
 
@@ -30,6 +30,6 @@ description: Claude Code の plugin / skills / hooks / commands / agents / marke
    - 末尾の出典 URL (plugins / hooks / skills / sub-agents の公式 docs) を**再取得**し、最終検証バージョン以降の **差分** を洗う。
    - 変わった挙動・新 event / 新 field / 新 frontmatter を **実機で検証**し、該当 reference ファイルを更新。検証した項目には `[実機検証済: vX.Y.Z]` を付与。
    - `[未検証]` TODO のうち現行で検証可能になったものを格上げ。
-   - 冒頭の **最終検証** スタンプを現行バージョン + 当日日付に更新。
+   - `${CLAUDE_SKILL_DIR}/last-verified.txt` を現行バージョン + 当日日付の 1 行に書き換え (= 冒頭スタンプの embed 元)。SKILL.md 本文は触らない。
    - 手順詳細 (issue 起票テンプレ / 検証ハーネス定型 / ハマり所) はリポ内 `docs/runbooks/cc-version-maintenance.md` を参照 (リポ checkout 内でのメンテ時のみ到達可)。
 4. 単に plugin 開発で参照しているだけ (= メンテ目的でない) なら、**告知のみ**で通常作業を続ける。
