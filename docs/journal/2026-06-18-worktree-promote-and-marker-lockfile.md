@@ -176,3 +176,82 @@ mplxukln (= 私の embed 化、myyokrpq ベース) を zpxzlppk (= 警告ブロ�
 - 短期: `worktree.baseRef = head` を試す (= 副作用: 親 WS の未 commit を引きずる)
 - 中期: `bump-semver vcs sync` (= `vcs rebase --onto-default`) を justfile の sync task に組み込む
 - 長期: EnterWorktree 時に「main bookmark の現位置 + 親 WS の HEAD」のどちらを base にするか hint を出す
+
+### `just bump-version` の前に @ を空にする必要がある (jj 固有)
+
+`bump-semver vcs is clean` は jj の @ に変更があると dirty 判定で fail する。私の `mplxukln` は describe 済みで「change として固定」されているつもりだったが、@ にいる限り「現在編集中」扱い。
+
+対処: `jj new -A mplxukln` で mplxukln の上に空 change を作って @ を進める。これで mplxukln は固定済みの parent となり、@ は空 = clean 判定。
+
+**教訓 (= jj 環境特有)**: 何かを commit した「後」に正規 task (bump-version 等) を回す時、@ を空 change に進めてから実行する。git では `git commit` で自動的に WC が clean になるが、jj では @ が常に「現在の change」なので明示的な `jj new` が必要。
+
+### `bookmark: main [move forward from ... to ...]` の意味
+
+`just push` の出力に `bookmark: main [move forward from 4814432b90e7 to d560d16a7ae3]` と出た。これは jj 環境では:
+- `vcs push --jj-bookmark-auto-advance` が auto-advance を実行
+- main bookmark を「自分が作った新 change の最新位置」まで自動で進めた
+- 4814432 = 元の main (= Release v0.2.16) → d560d16 = 新 Release commit (= rnnrxowx)
+
+つまり「私が手で `jj bookmark set main -r mplxukln` した位置」から、さらに bump-version で作った Release commit (rnnrxowx) の位置まで auto-advance された。git 環境でも同等 (= push 後の main は fast-forward で進む)。
+
+### CI workflow が無いリポ = push 後の追加検証は手元で
+
+`kawaz/claude-plugin-reference` には GitHub Actions workflow が存在しない (= watch-workflow が `no workflows` で自動 exit)。
+
+意味:
+- push の成否は `vcs push` の exit code で完結
+- CI 連動の「release artifact 作成」「homebrew tap 更新」等は走らない
+- on-success-release で marketplace + plugin cache の local 同期はされる (= justfile 50-54)
+- 実機検証は手元で `/reload-plugins` + skill invoke
+
+これは「リリース自動化が無いリポ」だが、claude plugin は plugin cache の同期さえできれば十分なので、CI workflow は不要設計。
+
+## 実践完了 + 残作業
+
+- [x] Step 1: zpxzlppk の SKILL.md 警告ブロック取り消し + mplxukln を rebase
+- [x] Step 2: main bookmark を mplxukln に進める + push + on-success-release で marketplaces/cache 両方更新
+- [x] Step 3: `just push` で全 gate 通過 + push + on-success-release 成功
+- [x] Step 4: cache 0.2.17 のファイル配置 + embed リテラルのサニティチェック OK
+- [x] Step 5: `/reload-plugins` + Skill invoke で embed 展開を実機確認 — **OK**。SKILL.md 冒頭が `> **最終検証: Claude Code v2.1.177 (2026-06-13)**` に展開 + メンテナンス責務 手順 3 内の `${CLAUDE_SKILL_DIR}/last-verified.txt` も full path 展開を確認 (= `!`cat ...`` と template 変数 substitution の両方が動作)
+- [ ] Step 6: 知見を上流還元 (= bump-semver vcs 拡張 issue, docs-structure runbook テンプレ issue, jj-worktree plugin bookmark セット issue)
+
+メンテナンス責務告知: invoke 時に `claude --version` = v2.1.181、最終検証 v2.1.177 で 4 patch 差。差分チェックは別タスクとして separate (本セッションの主題は embed 化と上流還元)。
+
+## 上流還元 issue の起票ポイント (本 journal を一次資料に)
+
+### bump-semver vcs に追加すべきサブコマンド
+
+| サブコマンド | signature | 用途 |
+|---|---|---|
+| `vcs is worktree` | `→ bool (exit 0/1)` | 現在 worktree/workspace 内か。`vcs is clean/dirty/git/jj` パターンに乗る |
+| `vcs get worktree-name` | `→ string` | hint メッセージ用。default なら空文字列 |
+| `vcs get default-branch` | `→ string` | main/master/trunk 抽象化。jj は trunk()、git は `git symbolic-ref refs/remotes/origin/HEAD` |
+| `vcs is on-default-branch` | `→ bool` | 現 branch/bookmark が default か |
+| `vcs promote` | (副作用あり) | 現 change を default branch に合流 (push せず、bookmark/branch 移動のみ) |
+| `vcs sync` (= rebase) | `--onto <ref>` | worktree のベースを最新 default branch に rebase |
+
+`vcs promote` は `--jj-bookmark-auto-advance` を push と切り離した版。git 環境では `git checkout default && git merge --ff-only <branch>` 相当。
+
+### justfile テンプレ提案 (= docs-structure runbook の `push` task 標準化)
+
+```just
+push:
+    @if bump-semver vcs is worktree; then \
+        wt=$(bump-semver vcs get worktree-name); \
+        bn=$(bump-semver vcs get default-branch); \
+        echo "⚠ worktree '$wt' にいます。${bn} に合流が必要です。"; \
+        echo ""; \
+        echo "  1. ベースを最新に同期:   just sync"; \
+        echo "  2. ${bn} に合流:          just promote"; \
+        echo "  3. push:                  just push"; \
+        exit 1; \
+    fi
+    # 既存の検証ゲート + vcs push
+```
+
+### jj-worktree plugin への提案
+
+- EnterWorktree (= 内部の jj-workspace 作成) 時に **workspace 名と同じ bookmark を自動セット**
+- これにより git の `-b/-B` で branch が作られる挙動と等価になり、git/jj の差異が手順上で吸収される
+- 今回の実践で `worktree-last-verified-lockfile` bookmark は空コミット ptkyvvxk に貼られたままで、私の作業 change には自動追従しなかった = 手作業で bookmark を進める必要があった
+
