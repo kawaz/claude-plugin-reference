@@ -22,23 +22,22 @@ skill との対比:
 | **skill** (`skills/<name>/SKILL.md`) | AI が description マッチで起動 | `/<plugin>:<name>` | デフォルト ✓ | ✓ | description で AI トリガ |
 | **agent** (`agents/<name>.md`) | AI が delegate するサブエージェント | ユーザ非可視 | Agent tool 経由 | ✗ | `skills:` で内部 skill を import 可 |
 
-[実機検証済: ~v2.1.159 (codex plugin)] 上 3 軸は同一 plugin 内で混在可能。例: codex plugin は `commands/review.md` (= user-only contract), `commands/setup.md` (= 両用途), `skills/codex-cli-runtime/SKILL.md` (= AI-only internal helper, `user-invocable: false`), `agents/codex-rescue.md` (= AI delegate サブエージェント) を併用している。
+[実機検証済: ~v2.1.159 (codex plugin)] 上 3 軸は同一 plugin 内で混在可能。例: codex plugin は `commands/review.md` (= コマンド実行型、user-only contract), `commands/setup.md` (= 両用途), `skills/codex-cli-runtime/SKILL.md` (= ガイド型、cli 使い方が AI に流入、`user-invocable: false` で内部 helper), `agents/codex-rescue.md` (= AI delegate サブエージェント) を併用している。
 
 ## 2. 役割マッピング (= どこに置くか)
 
 | 意図 | 置き場所 | 設定 |
 |---|---|---|
-| ユーザがスラッシュで打つ contract、AI に勝手にやられたくない (= 単一ファイルで完結) | `commands/` | `disable-model-invocation: true` |
-| ユーザもよく打つが AI 自律起動も歓迎 (= 単一ファイル) | `commands/` | (なし) |
-| ユーザ手動起動が主だが skill 固有機能が必要 (= supporting files / `context: fork` / `paths` / `hooks` / named `arguments` 等) | `skills/` | `disable-model-invocation: true` |
-| AI が空気読んで起動する主体、ユーザはたまに打つ | `skills/` | (なし) |
-| AI 専用 / 他 skill/agent から import される内部 helper | `skills/` | `user-invocable: false` |
-| AI delegate 専用サブエージェント | `agents/` | `skills:` で helper import |
+| **コマンド実行型** (= invoke 自体が action / 仕事の実行) | `commands/<name>.md` | 必要なら `disable-model-invocation: true` |
+| **ガイド / 指南型** (= invoke で使い方 context が流入、AI が後続判断・実行) | `skills/<name>/SKILL.md` | (なし) |
+| AI 専用 helper (= 内部 import 用) | `skills/<name>/SKILL.md` | `user-invocable: false` |
+| AI delegate サブエージェント | `agents/<name>.md` | `skills:` で helper import |
 
 判断軸:
-- **ユーザの明示性 vs AI 自律性のどちらが第一意図か** → ユーザ第一なら commands、AI 第一なら skills
-- **AI に勝手に invoke されると困るか** (= 破壊的・shared state 操作) → 困るなら `disable-model-invocation: true` で contract 化
-- **単独で動かす意図がない内部 contract か** (= 他から import される helper) → `user-invocable: false` の skill
+- **invoke が「実行」か「context 流入」か** → 実行なら commands、流入なら skills
+- **AI に勝手に invoke されると困るか** (= 破壊的・shared state) → `disable-model-invocation: true`
+- **ユーザに見せたくないか** → `user-invocable: false`
+- 補完表示は配置で挙動が変わる ([skills.md §1](skills.md#1-skillmd-の配置パターン))
 
 ## 3. Frontmatter 全 field
 
@@ -53,8 +52,8 @@ allowed-tools: Read, Glob, Grep, Bash(node:*), Bash(git:*), AskUserQuestion
 
 | field | 型 | 必須 | 用途 | 備考 |
 |---|---|---|---|---|
-| `description` | string | 推奨 | listing に表示 / AI 自動 invoke trigger | `disable-model-invocation: true` の時は AI 視点で hidden |
-| `argument-hint` | string | 任意 | autocomplete hint | 例: `[--wait\|--background] [focus ...]` |
+| `description` | string | 推奨 | listing 表示 / AI 自動 invoke trigger (= **AI audience**) | 常時 context に乗るので **短く保つ**。`disable-model-invocation: true` の時は AI 視点で hidden。audience 別の使い分けは [skills.md §3 audience 別の使い分け](skills.md#audience-別の使い分け--description--when_to_use--argument-hint) 参照 |
+| `argument-hint` | string | 任意 | autocomplete hint (= **ユーザ audience**) | 補完中スペース後にグレー `[...]` 表示、もう 1 文字打つと消える。例: `[--wait\|--background] [focus ...]` |
 | `disable-model-invocation` | bool | 任意 | true = AI 自動 invoke 不可、manual `/<plugin>:<name>` のみ | listing から description も削除 = AI context 食わない |
 | `allowed-tools` | string\|array | 任意 | このコマンド実行中に permission 無しで使える tool | turn 終了で clear |
 | `disallowed-tools` | string\|array | 任意 | このコマンド実行中に使えなくなる tool | 危険 tool 防止。skill と共通機構、実機挙動は [skills.md §6.1](skills.md#61-disallowed-tools-の実機挙動-実機検証済-v21170) ([実機検証済: v2.1.170]) |
@@ -70,17 +69,13 @@ skill との frontmatter 差分:
 
 ## 4. 補完表示の挙動 (実機検証)
 
-command の補完表示も skill と同じ 3 パターンルールに従う ([skills.md §1 の補完表示ルール](skills.md#1-skillmd-の配置パターン)参照)。command 名は plugin 名 prefix を持たないことが多いので (= `setup`, `review`, `status`)、多くは full namespace `/<plugin>:<name>` 表示になる。
+詳細は [skills.md §1 補完表示ルール](skills.md#1-skillmd-の配置パターン)。commands 配置は一般語名でも full namespace `/<plugin>:<name>` 表示になり plugin 元が明示される。
 
-実機例 [実機検証済: ~v2.1.160 2026-06-02]:
-- `/codex` 補完 → `/codex:setup` `/codex:status` `/codex:rescue` `/codex:review` `/codex:cancel` `/codex:adversarial-review` (= 全 full namespace、prefix 不一致)
-- `/statu` 補完 → `/status` (built-in), `/statusline`, `/codex:status` `(codex)`, `/usage`, `/ide`。bare `/status` で codex 側は **canonical 候補としては出ず**、full 表示 `/codex:status` 内の `status` 部分マッチで出る
-- `/gh-` 補完 → `/gh-monitor:watch-pr` `/gh-monitor:watch-workflow` (= namespace 付きのみ)
+実機例 [実機検証済: ~v2.1.160 + v2.1.183]:
+- `/codex` 補完 → `/codex:setup` `/codex:status` etc. (= 全 full namespace)
+- `/statu` 補完 → built-in `/status` + `/codex:status` `(codex)` 等が fuzzy match 候補化 (= 短縮形からも到達可能)
 
-**含意**:
-- command / skill 名に `setup` / `status` のような **一般語**を使っても namespace 必須なのでコンフリクトしない
-- 逆に短縮形 `/<name>` で打たせたいなら、名前を plugin 名 prefix で揃える (= cmux-msg の `cmux-msg-list` 方式)。command でも同じ
-- これは現バージョンの実機挙動で spec 保証ではない (= 将来版で再確認推奨)
+ユーザが短縮形 `/<name>` を打っても fuzzy match で候補に出るので、commands 配置 (= full namespace 表示) でも実用上問題ない。
 
 ### 4.1 補完メニューでのクリック挙動 [未検証: headless 不可]
 

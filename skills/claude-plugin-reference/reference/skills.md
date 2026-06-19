@@ -12,25 +12,23 @@
 | `.claude/skills/<name>/SKILL.md` | directory 名 (project scope) | |
 | `.claude/commands/<name>.md` (custom slash command files; project scope) | filename | `/deploy`、`/itumono-nonstop` 等 |
 | `~/.claude/commands/<name>.md` (同上; user scope) | filename | 同上 |
-| `<plugin>/skills/<name>/SKILL.md` | `<plugin>:<name>` | `/cmux-msg:cmux-msg-list` |
+| `<plugin>/skills/<name>/SKILL.md` | `<plugin>:<name>` | `/codex:codex-cli-runtime` 等 (= 補完表示は後述) |
 | `<plugin>/commands/<name>.md` | `<plugin>:<name>` | `/codex:setup`、`/codex:review` — 詳細は [commands.md](commands.md) |
 | `<plugin>/SKILL.md` (plugin root) | frontmatter `name` or plugin 名 | `/cmux-msg:cmux-msg` |
 
-### 補完表示ルール [実機検証済: ~v2.1.160 2026-06-02 (cmux-msg / gh-monitor / codex)]
+### 補完表示ルール [実機検証済: ~v2.1.160 + v2.1.183]
 
-候補文字列は常に canonical な `/<plugin>:<name>`。bare 名 (= `/list` 等) でのフォールバック candidate は無い (= namespace 必須)。表示時に renderer が以下 3 パターンで分岐する:
+canonical は常に `/<plugin>:<name>` (bare 名のフォールバック candidate は無い)。short / full 切替は **配置** で分岐:
 
-| 条件 | 表示 | 例 |
+| 配置 | 補完表示 | 例 |
 |---|---|---|
-| `name` が `plugin` と **完全一致** | full `/<plugin>:<plugin>` (= `/<plugin>` 単独だと plugin 起動と曖昧なため回避) | `/cmux-msg:cmux-msg` |
-| `name` が `plugin` を **prefix に持つ** (≠ 完全一致) | 短縮 `/<name>` + `(<plugin>)` suffix (= 冗長 prefix `<plugin>:` を collapse) | `/cmux-msg-list` `(cmux-msg)` |
-| `name` が `plugin` を prefix に持たない | full `/<plugin>:<name>` + `(<plugin>)` suffix | `/gh-monitor:watch-pr`, `/codex:setup` |
+| `skills/<plugin>/SKILL.md` (= plugin root) | full `/<plugin>:<plugin>` (`/<plugin>` 単独だと曖昧なため) | `/cmux-msg:cmux-msg` |
+| `skills/<name>/SKILL.md` (`name ≠ plugin`) | 短縮 `/<name>` + `(<plugin>)` | (仮例: `skills/foo/SKILL.md` → `/foo` `(<plugin>)`) |
+| `commands/<name>.md` | full `/<plugin>:<name>` + `(<plugin>)` | `/codex:setup` |
 
-**含意 (= 命名規約として使える)**:
-- skill 名を plugin 名 prefix で揃える (= `cmux-msg-list`, `cmux-msg-read`) と、補完で短縮形 `/cmux-msg-list` が打てる (= UX 良好、cmux-msg が採用している規約)
-- plugin 名と無関係な短い名前 (= `watch-pr`) は full namespace `/gh-monitor:watch-pr` になる。一般語の skill 名でも namespace 必須なので **他 plugin とのコンフリクトリスクは無い**が、補完では常に `<plugin>:` prefix を打つ必要がある
-- 補完マッチングは **表示文字列 (full or 短縮) に対して**行われる。`/statu` で `/codex:status` が候補に出るのは full 表示内の `status` 部分マッチ
-- これは現バージョンの実機挙動。公式 spec で保証された UI 仕様ではないため、将来版での再確認は推奨
+短縮表示の skills 配置は plugin 元が見えないので、他 plugin と命名衝突した時の判別性が低い。user invocable な entry は commands 配置にすると補完で plugin 元が常に出る。
+
+fuzzy match は表示文字列に対して動く: `/statu` で `/codex:status` が full 表示内の部分マッチで候補化される。
 
 ## 2. Skill folder 内の supporting files
 
@@ -58,9 +56,9 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | field | 型 | 必須 | 用途 | 備考 |
 |---|---|---|---|---|
 | `name` | string | 任意 | skill 表示名 | dir 名が優先、plugin root SKILL.md のみ frontmatter `name` が command 名決定 |
-| `description` | string | 推奨 | AI invocation trigger / listing | `when_to_use` と合わせて max 1,536 文字で truncate [spec] |
-| `when_to_use` | string | 任意 | description 補強 | 「ユーザが何を言ったら invoke してほしいか」 |
-| `argument-hint` | string | 任意 | autocomplete hint | 例: `[issue-number]`, `[filename] [format]` |
+| `description` | string | 推奨 | AI invoke trigger / listing (= **AI audience**、短く保つ) | `when_to_use` と合わせて max 1,536 chars [spec] |
+| `when_to_use` | string | 任意 | description 補強 (= **AI audience**) | 「ユーザが何を言ったら invoke してほしいか」 |
+| `argument-hint` | string | 任意 | 補完中グレー hint (= **ユーザ audience**) | 例: `[issue-number]`, `[filename] [format]` |
 | `arguments` | string\|array | 任意 | 位置引数 named getter | `arguments: [issue, branch]` で `$issue` `$branch` 展開可 |
 | `disable-model-invocation` | bool | 任意 | true = AI 自動 invoke 不可、manual `/name` のみ | listing から description も削除 = AI コンテキスト食わない (= ユーザ専用 skill 向け) [実機検証済: ~v2.1.156] |
 | `user-invocable` | bool | 任意 | false = `/` menu と listing から非表示、AI のみ invoke | background knowledge 用途 |
@@ -75,6 +73,14 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | `shell` | string | 任意 | `!`cmd`` の shell 指定 | `bash` (default) / `powershell` |
 
 [spec、公式 `skills.md` frontmatter reference より]
+
+### audience 別の使い分け (= description / when_to_use / argument-hint)
+
+frontmatter の文字列 field は **読み手 (audience) が違う**。混同すると context を圧迫しつつユーザにも刺さらない設計になる:
+
+- **`description` / `when_to_use` (AI audience)**: skill 発見 / 自動 invoke 判定 / listing 常時 context に乗る。AI が「いつ呼ぶか」を判断できる文を **短く** 書く。ユーザ向け使い方を埋め込まない
+- **`argument-hint` (ユーザ audience)**: 補完中スペース後にグレー `[...]` 表示。引数の形 (`[opt1|opt2] <required>` 等) を示す
+- **ユーザ向け詳細使い方** (例 / 引数仕様 / 出力形式 / トラブルシュート) は **SKILL.md 本文** か **plugin root SKILL.md** に分離する。本文は invocation 後に読み込まれるので常時 context を圧迫しない
 
 ## 4. String substitution (本文中で展開される変数)
 
@@ -134,13 +140,14 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | Hook command 内 (= shell env として) | ✓ [spec]、`${CLAUDE_PLUGIN_ROOT}` が env var として hook process に inject |
 | Skill から呼ばれた bash 内 (= bash env として) | **✗** [実機検証済: ~v2.1.156] bash で `echo $CLAUDE_PLUGIN_ROOT` は空 — ただし SKILL.md template で展開済の絶対パスが本文に入るので、Skill 経由なら問題なし |
 
-**Skill 経由で plugin bin を叩く正解パターン**:
+**Skill 経由で plugin bin を叩くパターン**:
 
-```md
-本 skill 内で本文に `${CLAUDE_PLUGIN_ROOT}/bin/cmux-msg $ARGUMENTS` を Bash で実行してください。
-```
+SKILL.md 本文に `${CLAUDE_PLUGIN_ROOT}/bin/<exe> $ARGUMENTS` と書くと AI へ流入する時点で展開済み絶対パス `/Users/.../plugins/cache/<plugin>/<ver>/bin/<exe> $ARGUMENTS` に置換される (= その plugin instance の bin を確実指定、bash 解決依存なし)。
 
-→ AI に流入する時には `/Users/kawaz/.claude-personal/plugins/cache/cmux-msg/cmux-msg/0.28.13/bin/cmux-msg $ARGUMENTS` に置換済 (= bash 解決依存なく、その plugin instance の bin を確実指定)
+**permission ガード対策 (実行コマンドの書き方)**: `${CLAUDE_PLUGIN_ROOT}/bin/<exe>` を Bash で直接叩く形は plugin path 個別の `Bash(<absolute path>:*)` rule を要求する。ホスト常駐コマンド (`bash` / `python3` / `bun` / `node` 等) を頭に挟んでフルパスを引数化すると、汎用 rule (`Bash(bash:*)` 等) で通る:
+
+- `bash ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh $ARGUMENTS` ← `Bash(bash:*)` で通る
+- 純バイナリ (= `bash` 等で実行できない) は wrapper script (= bash / sh) を挟み、wrapper 内で相対パスから bin/<exe> を起動する
 
 ### 4.4 展開境界 (= 推移しない) [実機検証済: v2.1.170]
 
