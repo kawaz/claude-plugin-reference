@@ -8,7 +8,7 @@ set positional-arguments
 # ---------- main tasks ----------
 
 # push (バージョン bump 済みを前提、全 gate 通過後に push してローカルも更新)
-push: ensure-clean validate test check-versions check-version-bumped check-outdated-translations check-embedded-justfile-sync check-bare-labels
+push: check-on-default-branch ensure-clean validate test check-versions check-version-bumped check-outdated-translations check-embedded-justfile-sync check-bare-labels
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
     just on-success-release
 
@@ -16,7 +16,7 @@ push: ensure-clean validate test check-versions check-version-bumped check-outda
 [script]
 bump-version bump="patch": ensure-clean
     new_version=$(bump-semver "$1" .claude-plugin/plugin.json .claude-plugin/marketplace.json --write --no-hint)
-    bump-semver vcs commit -m "Release v${new_version}" .claude-plugin/plugin.json .claude-plugin/marketplace.json
+    bump-semver vcs commit --allow-nonexistent-path -m "Release v${new_version}" .claude-plugin/plugin.json .claude-plugin/marketplace.json
 
 # 現在の version を確認
 version:
@@ -32,6 +32,21 @@ test:
     @for f in tests/*.test.sh; do [ -e "$f" ] || continue; bash "$f" || exit 1; done
 
 # ---------- internal recipes (push の依存) ----------
+
+# 現在の bookmark/branch が default (= main) 上にあるか確認 (DR-0038 dogfood)。
+# `vcs is on-default-branch` の反転 — `vcs is worktree` ベースだと kawaz の
+# jj 運用 (main workspace 自体が secondary workspace) で main からの push が
+# 誤検出される (bump-semver v0.40.1 DR-0038 Adoption pattern 節)。validate/test
+# 等を先に走らせると無駄が大きいので push 最初の dep に置く。
+[private]
+[script]
+check-on-default-branch:
+    if ! bump-semver vcs is on-default-branch; then
+        cur=$(bump-semver vcs get current-branch 2>/dev/null || echo "(ambiguous)")
+        bn=$(bump-semver vcs get default-branch)
+        printf >&2 "⚠ 現在 '%s' bookmark/branch にいます。%s に合流してから push してください\n  1. bump-semver vcs sync --onto %s@origin\n  2. bump-semver vcs promote\n  3. %s ワークスペースに移動して just push\n" "$cur" "$bn" "$bn" "$bn"
+        exit 1
+    fi
 
 # uncommitted change がない状態か確認 (git/jj-agnostic, DR-0020)
 ensure-clean:
