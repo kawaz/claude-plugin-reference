@@ -1,7 +1,7 @@
 {
   "name": "claude-plugin-reference",
   "description": "Claude Code plugin / skill / hooks の実機検証込みリファレンス",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "author": { "name": "kawaz" },
   "license": "MIT",
   "repository": "https://github.com/kawaz/claude-plugin-reference"
