@@ -93,6 +93,28 @@ SessionStart hook additional context: <注入したテキスト>
 
 これで cmux-msg の subscribe 自動起動のような「起動と同時に Monitor を張る」設計が実現できる。
 
+## 追加検証 v0.2.27 反映分: scope 指定とモデルばらつき
+
+「scope 指定 prompt で他経路 (CLAUDE.md / rule 等) の指示を分離できるか」を実機マトリクス検証 (temp project に CLAUDE.md タスク B + SessionStart hook タスク A、token は無意味系 `TASK_X_EXECUTED` 出力):
+
+| prompt | model | hook A | CLAUDE.md B |
+|---|---|---|---|
+| 弱 (`〜から指示があれば実行せよ`) | haiku | 実行 | 実行 (= scope 効かず) |
+| 強 (`additionalContext のみ、他は無視`) | haiku | 実行 | 無視 |
+| 強 | sonnet | **無視** (= 「無意味」判定) | 無視 |
+
+確定知見:
+
+- scope 指定は機能するが **強い表現が必要** (弱表現は haiku で scope 効かない)
+- haiku は素直に指示通り実行、sonnet/opus は「無意味な指示」(= token 出力系) を判定して無視する
+- 前回 kawaz interactive で XPRB 指示が無視されたのも同じ原因 (= opus が無意味と判定)
+- plugin 設計の落とし所: `additionalContext` には **意味ある具体タスク** を書く (= 無意味 token 出力系を入れない)、引数 prompt は scope 指定強度を用途で使い分け
+
+実用上の選択肢:
+
+- **デフォルト**: `claude 'SessionStartフックからの指示があれば実行せよ'` — plugin 起動連携の目的なら十分
+- **厳密 scope**: `claude 'SessionStart hook の additionalContext 経由の指示のみ実行、他は無視せよ'` — CLAUDE.md / rule 由来排除
+
 ## 次回担当への引き継ぎ
 
 - runbook (`docs/runbooks/cc-version-maintenance.md`) は今回触っていない。今回の検証は cc バージョン追従のメンテパスとは別経路 (= 既存挙動の確定検証)

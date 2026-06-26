@@ -414,6 +414,23 @@ SessionStart hook additional context: <注入したテキスト>
 
 plugin 開発者は `additionalContext` 本文に具体的タスクを書き、ユーザに「`claude 指示通り実行して` で起動して」と案内すれば、SessionStart 連携 plugin を実用設計できる。
 
+#### scope 指定とモデルばらつきの caveat [実機検証済: v2.1.193]
+
+「他経路 (CLAUDE.md / rule 等) の指示を分離して SessionStart hook 由来だけ実行させたい」場合は引数 prompt に **scope 指定** を含める。実機マトリクス (= temp project に CLAUDE.md タスク B + SessionStart hook タスク A、検証 token は無意味系の `TASK_X_EXECUTED` 出力):
+
+| prompt | model | hook 由来 (タスク A) | CLAUDE.md 由来 (タスク B) |
+|---|---|---|---|
+| `SessionStartフックから指示があれば実行せよ` (弱) | haiku | 実行 ✓ | 実行 ✓ (= scope 弱表現は通らない) |
+| `additionalContext 経由のみ実行、他は無視せよ` (強) | haiku | 実行 ✓ | 無視 ✓ |
+| 強 (同上) | sonnet | **無視** (= 「無意味 token 出力」と判定) | 無視 ✓ |
+
+実用上の落とし所:
+
+- **デフォルト推奨**: `claude 'SessionStartフックからの指示があれば実行せよ'` — plugin 起動連携の目的なら十分機能する (= CLAUDE.md 由来も並行実行されうるが、常時 context なので元々分離されない物)
+- **厳密 scope モード**: `claude 'SessionStart hook の additionalContext 経由の指示のみ実行、他は無視せよ'` — CLAUDE.md / rule 由来を排除したい場面
+- **モデルばらつき**: sonnet/opus は「無意味な指示」と判定した hook 指示を無視する傾向 (= 上表の sonnet タスク A = 無視)。plugin の `additionalContext` には **意味ある具体タスク** (= 「subscribe を Monitor で起動」のような実行価値の明確な指示) を書く必要あり、`echo TEST` のような無意味系は sonnet/opus がスキップする
+- これらは AI 判断レベルの挙動なので保証ではない。設計時はばらつきを想定し、plugin が「指示が実行されない場合のフォールバック」を持たせる方が安全
+
 ### async hook 経路 [実機検証済: v2.1.193]
 
 stdout 1 行目に `{"async": true, "asyncTimeout": <ms>}` を出力すると **claude プロセス側が hook を background 化**して session 開始を待たない。完了時に「`Async hook <hookName> completed`」UI 通知が出る (= sync の「`<EventName>:<source> hook success:`」と別経路)。
