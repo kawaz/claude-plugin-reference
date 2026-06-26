@@ -392,6 +392,28 @@ output `hookSpecificOutput` 固有フィールド [実機検証済: v2.1.170]:
 
 引数 prompt 無し起動 (`claude` のみ) で AI を自走 trigger する hook output 経路は **無い**。検証した 6 mode 全 fail: `additionalContext` / 推測フィールド `injectAsUserPrompt` / `hookSpecificOutput.userMessage` / top-level `userPrompt` / `systemMessage` / async 経路の 2 行目 `systemMessage`。`additionalContext` は AI context に届くが「AI が自発的に何か実行する」ことはない (= ユーザの prompt submit が turn を回す前提)。自動実行を期待する plugin は**起動時の引数 prompt** をユーザに要求する必要がある。
 
+### SessionStart hook 由来の context は AI が識別可能 [実機検証済: v2.1.193]
+
+`hookSpecificOutput.additionalContext` で注入した文字列は、AI の context に次の形式で届く:
+
+```
+<system-reminder>
+SessionStart hook additional context: <注入したテキスト>
+</system-reminder>
+```
+
+`SessionStart hook additional context:` ラベル + `<system-reminder>` タグで明示されるため、AI は「ユーザ発言」「公式 docs」「CLAUDE.md」等と区別して扱える。plugin 設計側で「これは hook 由来だから初回 turn で実行してください / これは参考情報として保持するだけで良い」のような分岐を `additionalContext` 本文に書ける。
+
+### 実用パターン: 引数 prompt で SessionStart 指示を実行させる [実機検証済: v2.1.193]
+
+「仕様上は自走 trigger 不能」だが、**引数 prompt 経由で「SessionStart hook の指示を初回 turn で実行させる」設計は実用可能**。ポイントは prompt の質:
+
+- ❌ `claude aaa` / `claude go` 等の **雑な prompt** は AI が「文脈解釈の手がかりなし」と判断、鸚鵡返しで終わり hook 指示は実行されない
+- ✓ `claude 指示通り実行して` / `claude セットアップを進めて` 等、**「context 内の指示を実行する文脈」を示唆する** prompt なら hook 指示を解釈・実行する
+- canonical 例: cmux-msg の SessionStart hook (= 「`Monitor で subscribe を起動してください`」と additionalContext 注入) + `claude 指示通り実行して` 起動 → 初回 turn で AI が subscribe を起動する
+
+plugin 開発者は `additionalContext` 本文に具体的タスクを書き、ユーザに「`claude 指示通り実行して` で起動して」と案内すれば、SessionStart 連携 plugin を実用設計できる。
+
 ### async hook 経路 [実機検証済: v2.1.193]
 
 stdout 1 行目に `{"async": true, "asyncTimeout": <ms>}` を出力すると **claude プロセス側が hook を background 化**して session 開始を待たない。完了時に「`Async hook <hookName> completed`」UI 通知が出る (= sync の「`<EventName>:<source> hook success:`」と別経路)。

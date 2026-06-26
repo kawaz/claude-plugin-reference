@@ -59,6 +59,40 @@
 - 引数 prompt 無し起動には `--session-id "$(uuidgen | tr A-Z a-z)"` が必要 (= 引数なしだと agents モード起動でセッションが bg 化する)
 - kawaz の手動検証は tmux で複数 pane に分けて並列実行可 (= 6 mode 同時に画面で観察)
 
+## 追加検証 (= release v0.2.26 反映分)
+
+リリース直後の kawaz による追試で 2 つの実用知見が確定:
+
+### 引数 prompt の質が効く
+
+- `claude aaa` / `claude go` 等の雑な prompt → AI が「文脈解釈の手がかりなし」と判定、鸚鵡返しで終了 (= hook 指示は無視)
+- `claude 指示通り実行して` → AI が「context 内の指示を実行する文脈」と解釈、SessionStart hook 由来の指示 (= cmux-msg subscribe を Monitor 起動) を初回 turn で実行
+- canonical 例: `claude 指示通り実行して` 起動 + cmux-msg の SessionStart hook → AI が初回 turn で subscribe を Monitor で起動 (画面で `Monitor で subscribe を起動します` 表示で確定)
+
+### SessionStart hook 由来の context は AI が識別可能
+
+`hookSpecificOutput.additionalContext` で注入した文字列は AI の context に次の形式で届く:
+
+```
+<system-reminder>
+SessionStart hook additional context: <注入したテキスト>
+</system-reminder>
+```
+
+- 明示ラベル + `<system-reminder>` タグで「ユーザ発言」「公式 docs」「CLAUDE.md」等と区別可能
+- plugin 設計側で `additionalContext` 本文に「これは hook 由来だから初回 turn で実行してください / これは参考情報として保持」のような取り扱い指示を書ける
+- 確認方法: `claude -p '質問: context に <unique_token> を含む節があるはず。出典の手がかりを引用してください'` → AI が `<system-reminder>SessionStart hook additional context: ...</system-reminder>` を引用
+
+### 実用パターン (= hooks.md §7.1 に追記)
+
+「仕様上は SessionStart hook で自走 trigger 不能」だが、**引数 prompt 経路で SessionStart 連携は実質可能**:
+
+1. plugin の SessionStart hook で具体的タスクを `additionalContext` に書く
+2. ユーザに「`claude 指示通り実行して` で起動して」と案内
+3. AI は hook 由来と識別した上で初回 turn で指示を実行
+
+これで cmux-msg の subscribe 自動起動のような「起動と同時に Monitor を張る」設計が実現できる。
+
 ## 次回担当への引き継ぎ
 
 - runbook (`docs/runbooks/cc-version-maintenance.md`) は今回触っていない。今回の検証は cc バージョン追従のメンテパスとは別経路 (= 既存挙動の確定検証)
