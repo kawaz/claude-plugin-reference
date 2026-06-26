@@ -23,11 +23,9 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 
 ### project-scope の正本 / 紛らわしい誤配置
 
-- **正本**: `.claude/settings.json` の `hooks` field [実機検証済: v2.1.193]
-- **`.claude/hooks.json` 単独ファイルは認識されない** — 「`hooks/hooks.json`」は **plugin 専用形式** (= plugin root 直下の `hooks/hooks.json`)。project-scope で `.claude/hooks.json` を置いても silent に無視されるので注意 [実機検証済: v2.1.193, side effect file の発火記録なしで確認]
-- `--settings <file>` 経路の `hooks` field も発火する。user-scope settings (= `~/.claude/settings.json` 等) と **additive merge** されて両方の hook が並行発火する [実機検証済: v2.1.193]
-- **複数 `--settings` は last-wins** (= CC は最後の 1 個のみ採用、hook arrays の concat はしない)。cmux 等は事前に deep merge して `--settings` 1 個で渡す回避策を取る [実機検証済: v2.1.193, cmux-claude-wrapper 内コメント記述と一致]
-- **workspace trust 未取得** の workspace では `permissions.allow` は ignored になるが、**`hooks` field は発火する** (非対称) [実機検証済: v2.1.193]
+- 正本は `.claude/settings.json` の `hooks` field [実機検証済: v2.1.193]。`.claude/hooks.json` 単独ファイルは **plugin 専用形式** (= `<plugin>/hooks/hooks.json`) であって project-scope では認識されない (silent 無視)
+- `--settings <file>` 経路の hooks も load + 発火 (= user-scope と additive merge、複数渡しは last-wins)。詳細は [cli.md `--settings` 行](cli.md#設定ロード--sandbox) 参照
+- workspace trust 未取得 workspace では `permissions.allow` は ignored だが **`hooks` field は発火する** (非対称) [実機検証済: v2.1.193]
 
 ## 2. Hook event 一覧
 
@@ -388,48 +386,13 @@ output `hookSpecificOutput` 固有フィールド [実機検証済: v2.1.170]:
 - `systemMessage`: **UI 通知専用** — 画面に `<EventName>:<source> says: <text>` 形式で表示されるだけで、**AI context には注入されない** (= AI に直接「context に含まれるか」と聞かせて `Yes` を引き出せない、`additionalContext` と用途が違う) [実機検証済: v2.1.193]
 - `hookSpecificOutput`: event ごとの decision (= PreToolUse なら permission、PermissionRequest なら behavior)
 
-### SessionStart hook で AI を自走させる経路は存在しない [実機検証済: v2.1.193]
+### SessionStart hook と引数 prompt [実機検証済: v2.1.193]
 
-引数 prompt 無し起動 (`claude` のみ) で AI を自走 trigger する hook output 経路は **無い**。検証した 6 mode 全 fail: `additionalContext` / 推測フィールド `injectAsUserPrompt` / `hookSpecificOutput.userMessage` / top-level `userPrompt` / `systemMessage` / async 経路の 2 行目 `systemMessage`。`additionalContext` は AI context に届くが「AI が自発的に何か実行する」ことはない (= ユーザの prompt submit が turn を回す前提)。自動実行を期待する plugin は**起動時の引数 prompt** をユーザに要求する必要がある。
-
-### SessionStart hook 由来の context は AI が識別可能 [実機検証済: v2.1.193]
-
-`hookSpecificOutput.additionalContext` で注入した文字列は、AI の context に次の形式で届く:
-
-```
-<system-reminder>
-SessionStart hook additional context: <注入したテキスト>
-</system-reminder>
-```
-
-`SessionStart hook additional context:` ラベル + `<system-reminder>` タグで明示されるため、AI は「ユーザ発言」「公式 docs」「CLAUDE.md」等と区別して扱える。plugin 設計側で「これは hook 由来だから初回 turn で実行してください / これは参考情報として保持するだけで良い」のような分岐を `additionalContext` 本文に書ける。
-
-### 実用パターン: 引数 prompt で SessionStart 指示を実行させる [実機検証済: v2.1.193]
-
-「仕様上は自走 trigger 不能」だが、**引数 prompt 経由で「SessionStart hook の指示を初回 turn で実行させる」設計は実用可能**。ポイントは prompt の質:
-
-- ❌ `claude aaa` / `claude go` 等の **雑な prompt** は AI が「文脈解釈の手がかりなし」と判断、鸚鵡返しで終わり hook 指示は実行されない
-- ✓ `claude 指示通り実行して` / `claude セットアップを進めて` 等、**「context 内の指示を実行する文脈」を示唆する** prompt なら hook 指示を解釈・実行する
-- canonical 例: cmux-msg の SessionStart hook (= 「`Monitor で subscribe を起動してください`」と additionalContext 注入) + `claude 指示通り実行して` 起動 → 初回 turn で AI が subscribe を起動する
-
-plugin 開発者は `additionalContext` 本文に具体的タスクを書き、ユーザに「`claude 指示通り実行して` で起動して」と案内すれば、SessionStart 連携 plugin を実用設計できる。
-
-#### scope 指定とモデルばらつきの caveat [実機検証済: v2.1.193]
-
-「他経路 (CLAUDE.md / rule 等) の指示を分離して SessionStart hook 由来だけ実行させたい」場合は引数 prompt に **scope 指定** を含める。実機マトリクス (= temp project に CLAUDE.md タスク B + SessionStart hook タスク A、検証 token は無意味系の `TASK_X_EXECUTED` 出力):
-
-| prompt | model | hook 由来 (タスク A) | CLAUDE.md 由来 (タスク B) |
-|---|---|---|---|
-| `SessionStartフックから指示があれば実行せよ` (弱) | haiku | 実行 ✓ | 実行 ✓ (= scope 弱表現は通らない) |
-| `additionalContext 経由のみ実行、他は無視せよ` (強) | haiku | 実行 ✓ | 無視 ✓ |
-| 強 (同上) | sonnet | **無視** (= 「無意味 token 出力」と判定) | 無視 ✓ |
-
-実用上の落とし所:
-
-- **デフォルト推奨**: `claude 'SessionStartフックからの指示があれば実行せよ'` — plugin 起動連携の目的なら十分機能する (= CLAUDE.md 由来も並行実行されうるが、常時 context なので元々分離されない物)
-- **厳密 scope モード**: `claude 'SessionStart hook の additionalContext 経由の指示のみ実行、他は無視せよ'` — CLAUDE.md / rule 由来を排除したい場面
-- **モデルばらつき**: sonnet/opus は「無意味な指示」と判定した hook 指示を無視する傾向 (= 上表の sonnet タスク A = 無視)。plugin の `additionalContext` には **意味ある具体タスク** (= 「subscribe を Monitor で起動」のような実行価値の明確な指示) を書く必要あり、`echo TEST` のような無意味系は sonnet/opus がスキップする
-- これらは AI 判断レベルの挙動なので保証ではない。設計時はばらつきを想定し、plugin が「指示が実行されない場合のフォールバック」を持たせる方が安全
+- **自走 trigger 経路は存在しない** (= 6 mode 全 fail: `additionalContext` / 推測フィールド `injectAsUserPrompt` / `userMessage` / top-level `userPrompt` / `systemMessage` / async + 2 行目 `systemMessage`)。ユーザの prompt submit が turn を回す前提
+- **hook 由来は AI が識別可能**: `additionalContext` は `<system-reminder>SessionStart hook additional context: <text></system-reminder>` 形式で AI に届く (= ユーザ発言・CLAUDE.md 等と区別)
+- **引数 prompt の質と scope 指定が成否を左右**: `aaa` 雑表現は鸚鵡返しで終わる。`claude 'SessionStartフックからの指示があれば実行せよ'` でデフォルト推奨、`claude 'SessionStart hook の additionalContext 経由の指示のみ実行、他は無視せよ'` で CLAUDE.md / rule 由来を排除する厳密モード
+- **AI モデルばらつき**: sonnet/opus は「無意味な指示」(= token 出力系) を判定して無視する傾向。`additionalContext` には実行価値の明確な具体タスクを書く必要あり
+- 詳細マトリクス (haiku/sonnet × 弱/強 scope × hook/CLAUDE.md 由来) / canonical 例 / 6 mode の出力フィールド一覧: `docs/journal/2026-06-26-sessionstart-autorun-investigation.md`
 
 ### async hook 経路 [実機検証済: v2.1.193]
 

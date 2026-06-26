@@ -25,7 +25,7 @@ claude [options] [command] [prompt]
 claude --session-id "$(uuidgen | tr A-Z a-z)"
 ```
 
-なお SessionStart hook の `hookSpecificOutput.additionalContext` 等の経路で AI を自走 trigger することは **できない** (= [hooks.md](hooks.md) §7.1 検証参照、ユーザの prompt submit 必須)。「起動時に勝手にやってほしい」系の plugin 設計は引数 prompt 経由で初回 turn を回す形になるが、**prompt の質が成否に効く** [実機検証済: v2.1.193]: `claude aaa` のような雑な prompt は AI が鸚鵡返しで終わり hook 指示は実行されない。`claude 指示通り実行して` レベルで初めて AI が「context 内の指示を実行する文脈」と解釈し SessionStart hook 由来の指示を実行する (詳細は hooks.md §7.1 「実用パターン」)。
+SessionStart hook の `additionalContext` 等で AI を自走 trigger することは **できない** (= 引数 prompt 必須、prompt の質と scope 指定が成否に効く)。実用パターンは [hooks.md §7.1 「SessionStart hook と引数 prompt」](hooks.md) を参照。
 
 
 
