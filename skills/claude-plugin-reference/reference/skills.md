@@ -15,6 +15,7 @@
 | `<plugin>/skills/<name>/SKILL.md` | `<plugin>:<name>` | `/codex:codex-cli-runtime` 等 (= 補完表示は後述) |
 | `<plugin>/commands/<name>.md` | `<plugin>:<name>` | `/codex:setup`、`/codex:review` — 詳細は [commands.md](commands.md) |
 | `<plugin>/SKILL.md` (plugin root) | frontmatter `name` or plugin 名 | `/cmux-msg:cmux-msg` |
+| `~/.claude/skills/<name>/.claude-plugin/plugin.json` (skills-dir auto-load、v2.1.157〜) | plugin 名 | `claude plugin init` 生成形、詳細 §8.3 |
 
 ### 補完表示ルール [実機検証済: ~v2.1.160 + v2.1.183]
 
@@ -29,6 +30,14 @@ canonical は常に `/<plugin>:<name>` (bare 名のフォールバック candida
 短縮表示の skills 配置は plugin 元が見えないので、他 plugin と命名衝突した時の判別性が低い。user invocable な entry は commands 配置にすると補完で plugin 元が常に出る。
 
 fuzzy match は表示文字列に対して動く: `/statu` で `/codex:status` が full 表示内の部分マッチで候補化される。
+
+### nested `.claude/skills/` の scope-based loading
+
+project root だけでなく **cwd の祖先方向にある任意の `.claude/skills/<name>/SKILL.md` も自動 load** される (v2.1.178 〜)。cwd が `<root>/sub/` で `<root>/sub/.claude/skills/nested-skill/` がある場合、その nested-skill は available-skills 一覧に出る。一方 cwd が `<root>/` だけだと nested-skill は出ない (= scope は cwd 起点で決まる) [実機検証済: v2.1.193]。
+
+- 同名 skill (= root と nested 両方に `name: foo`) が両方 load された場合、両方が available-skills に並ぶ ([spec] CHANGELOG v2.1.178 は disambiguate 名を `<dir>:<name>` 形式と説明、headless listing では両方とも bare `foo` で見えたため Skill tool 経由の addressability は未検証)
+- v2.1.178 で nested skills の dir-qualified 名が non-interactive run の permission prompt で block される bug が修正 ([spec] CHANGELOG、headless 検証は未実施)
+- v2.1.178 で `.claude/skills` / `.claude/hooks` が symlink の時 Linux sandbox 起動失敗 ([spec] CHANGELOG、macOS 環境のため未検証)
 
 ## 2. Skill folder 内の supporting files
 
@@ -73,6 +82,10 @@ description: What this skill does (= AI 自動 invoke 判定の key、listing �
 | `shell` | string | 任意 | `!`cmd`` の shell 指定 | `bash` (default) / `powershell` |
 
 [spec、公式 `skills.md` frontmatter reference より]
+
+**v2.1.186 frontmatter 変更点**:
+- `display-name` / `default-enabled` / `fallback` / `metadata.*` の 4 key は kebab-case / snake_case / camelCase いずれも受理 ([spec] CHANGELOG v2.1.186、他 field の case 揺れは未保証)
+- 壊れた YAML frontmatter は **silent fail せず本文を empty metadata で load** する [実機検証済: v2.1.193]。listing には `- <name>` のみ (description なし) で出る。`/<name>` は引けるが AI 自動 invoke 用 description が無い (公式 docs 記述、`--debug` で parse error 表示)
 
 ### audience 別の使い分け (= description / when_to_use / argument-hint)
 
@@ -254,6 +267,19 @@ session 再起動なしに skill ディレクトリ群を再スキャンする s
 ### 8.2 skill hot-reload の再アナウンス粒度 [spec]
 
 単一 skill の変更時、以前は全 skill listing を context へ再送していたが、v2.1.174 で**変更された skill のみ再アナウンス**するよう修正された (出典: CHANGELOG v2.1.174)。内部挙動 (context への注入粒度) のため headless での直接観測は未実施。
+
+### 8.3 `claude plugin init <name>` で `.claude/skills/` 配置の plugin を scaffold [実機検証済: v2.1.193]
+
+v2.1.157 以降、`.claude/skills/<name>/` 配下に `.claude-plugin/plugin.json` を持つディレクトリは **marketplace 経由なしに自動 load** される (= `<name>@skills-dir` として enable される)。
+
+- `claude plugin init <name>` で `~/.claude/skills/<name>/` に `SKILL.md` + `.claude-plugin/plugin.json` (`"skills": ["./"]` 入り) を生成
+- 「次 session で auto-load される」案内が出る (= 即時反映は `/reload-plugins` 必要)
+- `--with skills,agents,hooks,mcp,lsp,output-style,channel` でコンポーネント追加 scaffold
+- 通常の plugin と同じく `claude plugin disable <name>@skills-dir` で off
+
+### 8.4 user-level skill の autocomplete 重複表示 [未検証]
+
+複数 plugin が enable な時に user-level skill が slash-command autocomplete で重複表示される bug を v2.1.183 で修正 ([spec] CHANGELOG、対話 UI 専用挙動のため headless 観測不能)。
 
 ## 9. Subagent execution (`context: fork`)
 

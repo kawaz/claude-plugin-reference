@@ -142,6 +142,7 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 | `""` (空) | 全マッチ | tool 系以外で多用 |
 | `"ToolName"` | 完全一致 | `"Edit"` |
 | `"Tool1\|Tool2"` | alternation (regex ではなく文字列、backslash escape 必須) | `"Edit\|Write"` |
+| `"Tool1,Tool2"` | comma 区切り alternation。両 tool で hook 発火 [実機検証済: v2.1.193]。以前は silent に発火しない bug があったが v2.1.191 で修正 [spec] | `"Bash,Read"` |
 | `^Notebook` / `mcp__.*` | regex | MCP tool 命名 `mcp__<server>__<tool>` を `.*` で拾える |
 | event 固有値 | SessionStart の `startup`/`resume`/`clear`/`compact` 等 | (event ごとに値が違う) |
 
@@ -193,6 +194,18 @@ file 系 tool の `if` は **tool が触る file path** を glob 比較する。
 - glob のスコープ境界が正しく効く (`Edit(src/**)` は `lib/util.ts` の Edit を発火させない)。
 - **注意**: `Edit` tool は実行前に対象を **Read** する。そのため `Edit src/app.ts` 時には `Edit(src/**)` だけでなく `Read(src/**)` の `if` も評価・発火する。Edit 専用 hook を書いたつもりでも、同じ path に対する Read 系 `if` が先に走る点に注意。
 - **`~` ホーム展開 glob も効く**: `Read(~/.ssh/**)` や `Read(~/<dir>/**)` のような `~` 始まりパターンは home 展開されてマッチする (home 直下・`~/.ssh/**` の両方で発火を実機確認、`~` パターンが project 内 path を誤マッチしないことも確認)。これで CHANGELOG 2.1.176 が挙げた 3 例 (`Edit(src/**)` / `Read(.env)` / `Read(~/.ssh/**)`) すべてが実機追認済み。
+- **mid-pattern wildcard も効く**: `Read(secrets-*/config.json)` のように path 途中に `*` を含むパターンは settings.json の `permissions.deny` で受理 + 実機 match する (v2.1.172 で startup 時 reject される bug が修正) [実機検証済: v2.1.193, deny rule 経路で確認]。
+
+#### `Tool(param:value)` syntax (settings.json permission rule 限定) [実機検証済: v2.1.193]
+
+v2.1.178 で permission rule に `Tool(param:value)` 形式 (= tool 入力 param の値で match、`*` wildcard 可、例 `Agent(model:opus)`) が追加された [spec]。ただし **native matcher を持つ tool (`Bash` / `Read` / `Edit` / `Write` 等) では rule loader が以下の warning を吐いて当該 rule を無視する** [実機検証済: v2.1.193]:
+
+```
+Permission deny rule "Bash(command:...)" targets command as a raw string and will not match — use Bash(…) for Bash's own matcher.
+Permission deny rule "Read(file_path:...)" targets file_path as a raw string and will not match — use Read(…) for Read's own matcher.
+```
+
+= Bash/Read/Edit/Write は従来の `Bash(<command pattern>)` / `Read(<path pattern>)` 形式 (§3 既述) を使う。`param:` 形式が有効なのは native matcher を持たない tool (例: `Task(subagent_type:...)` 形式は loader 受理を確認) のみ [実機検証済: v2.1.193, loader 受理のみ確認。実際の deny 動作は subagent spawn を伴うため [未検証: TODO]]。
 
 ## 4. Hook command の type 種別
 
@@ -567,6 +580,7 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 - [ ] plugin 経由 (`${CLAUDE_PLUGIN_ROOT}` 付き) hook の error ヘッダに展開前/展開後どちらのパスが出るか (§9.0)
 - [ ] `exit 2` の効果: `PostToolUseFailure` / `PostToolBatch` / `PermissionDenied` / その他 lifecycle event (§10.3)
 - [ ] `prompt` / `agent` hook type が全 event で使えるか (§10.4)
+- [ ] `Tool(param:value)` 形式の native-matcher なし tool (Task 等) での実 deny 動作 (§3 末尾)
 
 ## 11. 参考 URL (出典)
 

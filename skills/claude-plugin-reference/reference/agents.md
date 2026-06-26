@@ -82,6 +82,13 @@ You are a security reviewer. 変更を分析し、脆弱性・権限昇格・入
 - agent ファイルを `.claude/agents/` または `~/.claude/agents/` に**コピー**すれば制限解除 [spec]
 - または `settings.json` / `settings.local.json` の `permissions.allow` にルール追加 (ただし**セッション全体に効く**、plugin agent 限定にはならない) [spec]
 
+### Agent tool の permission matcher と background 経路
+
+- v2.1.186 で **`Agent(type:foo)` deny rule と `Agent(x,y)` allowed-types 制限が named subagent spawn に対しても enforce** されるよう修正 [spec] (CHANGELOG v2.1.186)
+- v2.1.186 で **background subagent の permission prompt は auto-deny でなく main session に surface** されるよう変更 [未検証: 対話 UI 専用、headless 観測不能] (CHANGELOG v2.1.186)
+- v2.1.187 で **Agent tool の `schema` parameter / `--json-schema` の structured output**: model が成功後の `StructuredOutput` を無限再呼出ししなくなり、後続ターンも structured output を確実に返す [spec] (CHANGELOG v2.1.187)
+- v2.1.153 で **非 plugin agent (project/user/CLI scope) の frontmatter `mcpServers`** が `--strict-mcp-config` / `--bare` / remote mode / enterprise managed MCP / managed-settings allow-deny policy を無視する bug を修正 [spec] (CHANGELOG v2.1.153)。plugin agent は元から `mcpServers` 自体が無視される (上記の制限を参照)
+
 ## 名前空間 [spec]
 
 plugin が配る agent は **`<plugin-name>:<agent-name>`** で参照される。
@@ -106,11 +113,14 @@ plugin が配る agent は **`<plugin-name>:<agent-name>`** で参照される�
 
 `.claude/agents/` と `~/.claude/agents/` は**再帰スキャン**され、`agents/review/` 等のサブフォルダで整理できる (identity は `name` のみなのでパスは無関係) [spec]。
 
+v2.1.178 で **nested `.claude/` の名前衝突は cwd に最も近いものが勝つ** ようになった (agent / workflow / output-style 共通)。project-scope の workflow 保存も最寄りの既存 `.claude/workflows/` を target にする [spec] (CHANGELOG v2.1.178)。
+
 ## 起動方法 [spec]
 
 1. **自動委譲**: Claude が `description` を読み、task に合致すれば自動で agent を選んで委譲する
 2. **明示呼び出し (自然言語)**: 「Use the security-reviewer subagent to ...」のように prompt で agent 名を指定
 3. **Task / Agent tool**: `subagent_type` に agent 名を渡して spawn
+   - v2.1.178 で agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) は **`TeamCreate` / `TeamDelete` tool を削除**。各セッションに暗黙の team が常在し、Agent tool の **`name` parameter で teammate を直接 spawn** する。旧 `team_name` parameter は受理されるが ignored [spec] (CHANGELOG v2.1.178)
 4. **セッション全体を agent 化**: `claude --agent <name>` または `settings.json` の `agent` key
    - plugin の `settings.json` でサポートされるのは `agent` と `subagentStatusLine` の 2 key のみ [spec]
 
@@ -120,7 +130,9 @@ subagent (子) も自分の context で `Agent` / `Task` tool を使い、さら
 
 - 子が `Agent` tool を呼んで孫を起動でき、拒否されない (= 親→子→孫の 2 段ネストが成立) [実機検証済: v2.1.174]
 - トークン文字列を孫に渡し、孫→子→親と伝言させて最終応答まで往復できる (孫での加工も保持) ことを確認 [実機検証済: v2.1.174]
-- **最大 5 階層まで** [spec] (出典: CHANGELOG v2.1.172)。ただし実測は反証: **183 階層の単一チェーンが一度も spawn 拒否されず成立** (= 拒否としての階層上限は観測されない) [実機検証済: v2.1.174]
+- **最大 5 階層まで** [spec] (出典: CHANGELOG v2.1.172)。ただし v2.1.174 実測では反証: **183 階層の単一チェーンが一度も spawn 拒否されず成立** (= 拒否としての階層上限は観測されない) [実機検証済: v2.1.174]
+- v2.1.181 で foreground subagent も background と同じ 5 段 cap を尊重するよう修正 [spec] (CHANGELOG v2.1.181)。v2.1.174 の反証観測は本修正前。再観測 TODO
+- v2.1.187 で depth tracking 修正: **resumed subagent は元の spawn depth を復元**、**forked subagent も depth cap にカウント**される [spec] (CHANGELOG v2.1.187)
 - ネストは transcript 上も一直線の親子連鎖として記録される (子の `subagents/agent-*.meta.json` の `toolUseId` = 親 transcript 内の Agent tool_use id、で親子辺を辿れる) [実機検証済: v2.1.174]
 - ネストには子が `Agent` / `Task` tool を持つことが前提。`tools` field で除外した場合に spawn 不能になるかは未観測 [未検証]
 

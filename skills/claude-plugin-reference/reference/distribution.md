@@ -371,6 +371,17 @@ rm -rf "$CLAUDE_CONFIG_DIR/skills/my-tool"
 
 同じ field は marketplace entry にも書ける。marketplace entry の値が `plugin.json` より優先される。
 
+## marketplace.json — schema 追加 field [spec]
+
+実機検証は未実施 (= marketplace 配布構成の組み立てコストが高い)。出典: [Plugin Marketplaces](https://code.claude.com/docs/en/plugin-marketplaces.md) / CHANGELOG。
+
+- `source.skipLfs: true` — `source.source: "github"` / `"git"` で clone / update 時に Git LFS download を skip [spec] (CHANGELOG v2.1.153)
+- marketplace top-level `renames: { "<旧 plugin 名>": "<新 plugin 名>" }` — install 済みユーザの settings.json の plugin 名を新名へ自動書き換え [spec] (CHANGELOG v2.1.193)
+
+## marketplace install リトライ用 env flag [spec]
+
+- `CLAUDE_CODE_PLUGIN_KEEP_MARKETPLACE_ON_FAILURE=1` — install 失敗時に clone 済み marketplace ディレクトリを保持し再試行に再利用させる。v2.1.178 で fresh install が clone をスキップしてしまう bug 修正済み [spec] (CHANGELOG v2.1.178)
+
 ## トラブルシュート — `--safe-mode` と bundled skills 無効化
 
 フラグ / 環境変数の実在は `claude --help` で確認済み [実機検証済: v2.1.170]。CLI 全 option のリファレンスは [cli.md](cli.md)、 `--safe-mode` vs `--bare` の比較表は [cli.md `--bare` vs `--safe-mode`](cli.md#--bare-vs---safe-mode) を参照。
@@ -442,6 +453,9 @@ CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1 claude
 ### TODO
 
 - [ ] `defaultEnabled: false` の install→enable 往復挙動 (現状 [spec]、install が重く未実施)
+- [ ] marketplace `renames` の settings 自動書き換え (新旧 plugin 名対応の手元再現コスト高、現状 [spec] CHANGELOG v2.1.193)
+- [ ] marketplace `source.skipLfs` (LFS リポ準備が必要、現状 [spec] CHANGELOG v2.1.153)
+- [ ] `CLAUDE_CODE_PLUGIN_KEEP_MARKETPLACE_ON_FAILURE=1` の挙動 (= 失敗状態作成が必要、現状 [spec] CHANGELOG v2.1.178)
 - [ ] `disableBundledSkills` 単独設定時の挙動実機検証 (`--safe-mode` 側は [実機検証済: v2.1.177] に格上げ済 → cli.md 参照)
 - [ ] **marketplace.json の `plugins[]` 配列の詳細 schema** は本ファイル未カバー
 - [ ] **plugin.json の `userConfig`** (= `${user_config.*}` の供給元) は本ファイル未カバー

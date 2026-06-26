@@ -106,6 +106,16 @@ claude -p "..." --output-format json | jq -r '.[-1].result // empty'
 claude -p "..." --output-format json --json-schema '...' | jq '.[-1].structured_output'
 ```
 
+[spec: v2.1.161] background subagent が spawn された run で stdout に subagent 出力が混入し `--output-format text` / `json` の整合を壊す事象を修正 (= 親 `-p` の stdout は親自身の result だけになる)。
+
+### `-p` モードでの `/config key=value`
+
+[実機検証済: v2.1.193] `claude -p '/config key=value [key=value ...]'` で対話 UI を経由せず user settings.json を書換える経路が動く (v2.1.181 新規)。`claude -p '/config'` で受理 key 一覧と各 key の choices を出力 (= help)。例:
+
+```bash
+claude -p '/config language=English'   # → "Set Language to English"、~/.claude*/settings.json の `language` を更新
+```
+
 ### `--max-budget-usd` の cache 込み挙動
 
 [実機検証済: v2.1.177] `total_cost_usd` は **cache read / cache creation を含む累計**。`claude -p "hi"` 一発でも plugin/skill 初期化分の cache create で **$0.10 級まで膨らみうる**。検証スクリプトでは `--max-budget-usd 1.0` 程度を渡しておかないと作業途中で `error_max_budget_usd` で打ち切られる。
@@ -162,6 +172,8 @@ error: option '--output-format <format>' argument 'invalid' is invalid. Allowed 
 | `--no-session-persistence` | session を保存しない (`--print` 専用) |
 
 [実機検証済: v2.1.177] `--no-session-persistence -p ...` 実行前後で `~/.claude*/projects/<encoded-cwd>/*.jsonl` の数に **差分 0** (= 期待通り `.jsonl` は作られない)。
+
+[spec: v2.1.187] `--resume` が「直前の `-p` 実行が model turn を 1 つも生成しなかった場合に `No conversation found` で落ちる」事象を修正。0 ターン session も resume 可能になった。
 
 ## 設定ロード / sandbox
 
@@ -301,6 +313,8 @@ claude -p "..." --output-format json --json-schema '...' | jq '.[-1].structured_
 
 haiku では schema 解釈が弱い場合あり、sonnet 以上推奨。
 
+[spec: v2.1.187] `--json-schema` / workflow `agent({schema})` の structured output で **2 ターン目以降も確実に structured output を返す** 修正 (= 以前は model が `StructuredOutput` を再呼出ししてループする事象あり)。
+
 ## 起動連携 / IDE / Chrome
 
 | option | 説明 |
@@ -312,6 +326,7 @@ haiku では schema 解釈が弱い場合あり、sonnet 以上推奨。
 | `--remote-control [name]` | Remote Control 有効化 (= MCP/SDK 経路) |
 | `--remote-control-session-name-prefix <prefix>` | auto-generated session 名の prefix (default: hostname) |
 | `--brief` | `SendUserMessage` tool (agent → user) を有効化 |
+| `--bg`, `--background` | session を background agent として起動し即 return (= `claude agents` で管理)。[実機検証済: v2.1.193] `claude --help` にリスト掲載 (v2.1.187 で help 漏れ修正) |
 | `--betas <betas...>` | beta header を API request に付与 (API key user のみ) |
 
 ## メタ
@@ -358,6 +373,8 @@ haiku では schema 解釈が弱い場合あり、sonnet 以上推奨。
 | `get <name>` | server 詳細 + health check |
 | `remove <name>` | `-s`/`--scope` (省略で実在 scope から削除) |
 | `reset-project-choices` | (`.mcp.json` の承認/拒否を全 reset) |
+| `login <name>` | MCP server (HTTP / SSE / claude.ai connector) に OAuth 認証。`--no-browser` で authorization URL を stdout に出して stdin で redirect URL を貼り戻す経路 (= SSH / headless 用)。[実機検証済: v2.1.193] (v2.1.186 新規) |
+| `logout <name>` | 保存済み OAuth credential を削除。[実機検証済: v2.1.193] (v2.1.186 新規) |
 | `serve` | Claude Code MCP server 起動 (`-d`/`--debug`, `--verbose`) |
 
 ### `claude auth`

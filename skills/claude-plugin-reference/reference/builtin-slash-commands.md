@@ -27,7 +27,7 @@
 | `/setup-vertex` | Vertex AI 認証 (`CLAUDE_CODE_USE_VERTEX=1` 時のみ表示) |
 | `/terminal-setup` | 端末 keybinding 設定 (VS Code / Cursor / Devin Desktop / Alacritty / Zed 専用表示) |
 | `/keybindings` | キーボードショートカット設定ファイルを開く |
-| `/install-github-app` | Claude GitHub Actions セットアップ wizard |
+| `/install-github-app` | Claude GitHub Actions セットアップ wizard。Actions workflow セットアップ自体は optional に変更 [spec v2.1.187] |
 | `/install-slack-app` | Claude Slack app の OAuth flow |
 | `/web-setup` | ローカル `gh` 経由で claude.ai/code への GitHub 連携 |
 | `/remote-env` | Cloud agent のデフォルト環境を選ぶ |
@@ -36,13 +36,13 @@
 
 | command | 説明 |
 |---|---|
-| `/clear [name]` — alias `/reset` `/new` | 新規会話開始。直前は `/resume` で復帰可。name で picker のラベル |
+| `/clear [name]` — alias `/reset` `/new` | 新規会話開始。直前は `/resume` で復帰可、`/clear` 前の中身は `/rewind` でも巻き戻せる [spec v2.1.191]。name で picker のラベル |
 | `/compact [instructions]` | これまでの会話を要約して context 解放 (rules/skills/memory の生存範囲は `/en/context-window` 参照) |
 | `/context [all]` | コンテキスト消費を色付きグリッドで可視化 |
 | `/resume [session]` — alias `/continue` | session 復帰。v2.1.144 以降 `bg` マーク付きで background session も picker に出る |
 | `/branch [name]` | ここから会話を分岐 (= 元会話は preserved)。background subagent に渡したいなら `/fork` |
 | `/fork <directive>` [min: 2.1.161] | 現会話を継承した background subagent を起こす。結果は会話に戻る。<v2.1.161 では `/branch` の alias |
-| `/rewind` — alias `/checkpoint` `/undo` | 会話/コードを過去地点まで巻き戻し、または選択 message から要約 |
+| `/rewind` — alias `/checkpoint` `/undo` | 会話/コードを過去地点まで巻き戻し、または選択 message から要約。`/clear` 前の地点にも遡れる [spec v2.1.191] |
 | `/rename [name]` | session 名変更 (prompt bar に出る)。name 省略で auto |
 | `/recap` | 現 session の 1 行要約をその場で生成 (自動 recap は離席復帰時) |
 | `/diff` | uncommitted change + 各 turn の diff を interactive viewer で |
@@ -67,15 +67,15 @@
 
 | command | 説明 |
 |---|---|
-| `/permissions` — alias `/allowed-tools` | allow/ask/deny ルール管理。`auto mode` の最近の denials も review 可 |
-| `/add-dir <path>` | 当該 session に作業 dir を追加。追加 dir 配下の `.claude/` 設定は **読まない** (CLAUDE.md 探索だけ) |
+| `/permissions` — alias `/allowed-tools` | allow/ask/deny ルール管理。`auto mode` の最近の denials も review 可。Recently-denied tab で承認した denial は close 時に永続化される [spec v2.1.191] |
+| `/add-dir <path>` | 当該 session に作業 dir を追加。追加 dir 配下の `.claude/` 設定は **読まない** (CLAUDE.md 探索だけ)。既に working dir のときは案内メッセージのみで重複追加しない [spec v2.1.193] |
 | `/cd <path>` [min: 2.1.169] | session を新 dir に移す (= prompt cache 保持、新 dir の CLAUDE.md は append、project storage 移動)。trust 未取得 dir は確認。<v2.1.169 で `Unknown command` |
 
 ## 設定 / 表示
 
 | command | 説明 |
 |---|---|
-| `/config` — alias `/settings` | Settings UI 起動 (theme / model / output style 等) |
+| `/config` — alias `/settings` | Settings UI 起動 (theme / model / output style 等)。`/config key=value [key=value ...]` で interactive / `-p` / Remote Control から直接 set [実機検証済: v2.1.193 (CHANGELOG 初出 v2.1.181)]。`/config --help` で利用可能 key 一覧 (`thinking` / `model` / `theme` / `outputStyle` / `permissionMode` / `editor` / `workflowKeywordTriggerEnabled` 等) [実機検証済: v2.1.193 (CHANGELOG 初出 v2.1.183)]。interactive UI では Enter/Space で toggle、Esc で save+close [未検証 v2.1.183] |
 | `/status` | Settings UI を Status タブで開く (= version / model / account / connectivity)。応答中も動く |
 | `/theme` | カラーテーマ切替 (auto / light / dark / 色覚配慮 / ANSI / `~/.claude/themes/` の custom) |
 | `/tui [default\|fullscreen]` | TUI renderer 切替 + 会話保持で再起動。`fullscreen` で flicker-free alt-screen |
@@ -104,7 +104,7 @@
 |---|---|
 | `/code-review [low\|medium\|high\|xhigh\|max\|ultra] [--fix] [--comment] [target]` [Skill] | working tree diff のレビュー。`--fix` で適用、`--comment` で GH PR inline、`ultra` で [`/ultrareview`](#ultrareview-related)。v2.1.154 以降は `/simplify` が cleanup-only 経路で分離 |
 | `/simplify [target]` [Skill] [min: 2.1.154] | 4 つの review agent (reuse / simplification / efficiency / abstraction) 並列で cleanup 適用。**bug 探しはしない** → bug は `/code-review`。<v2.1.154 では `/code-review --fix` の alias |
-| `/review [PR]` | PR を **ローカル** session でレビュー。cloud は `/code-review ultra` |
+| `/review [PR]` | PR を **ローカル** session でレビュー。v2.1.186 以降は `/code-review medium` と同じ review engine を使用 [spec]。cloud は `/code-review ultra` |
 | `/security-review` | 現在 branch の git diff を脆弱性観点でレビュー (injection / auth / data exposure) |
 | `/verify` [Skill] [min: 2.1.145] | アプリを実起動して change を実機検証 (test/type じゃなく挙動を見る) |
 | `/run` [Skill] [min: 2.1.145] | アプリを起動して change が動いているか観察 (verify との分担: `/run` は driving、`/verify` は assertion) |
@@ -120,7 +120,7 @@
 | `/batch <instruction>` [Skill] | リポ全体規模の変更を 5-30 単位に分解 + 並列実行。各 unit が独立 git worktree で subagent → PR。git リポ必須 |
 | `/tasks` — alias `/bashes` | background で走っている全 task の管理 |
 | `/stop` | 現在 attach 中の background session を停止 (transcript / worktree は保持)。detach のみは `/exit` or `←` |
-| `/workflows` | 動作中 workflow の progress view (= 監視 / pause / resume / save) |
+| `/workflows` | 動作中 workflow の progress view (= 監視 / pause / resume / save)。dynamic-workflow の prompt trigger keyword は `ultracode` (旧 `workflow`、v2.1.158 で rename) [実機検証済: v2.1.193]、または `"run a workflow"` / `"workflow:"` 等の explicit phrase のみで発火 (= 単なる `workflow` 一語ではトリガしない、purple shimmer highlight) [未検証 v2.1.178] |
 | `/loop [interval] [prompt]` [Skill] — alias `/proactive` | prompt を session 内で reactive 実行。interval 省略で self-pace、prompt 省略で `.claude/loop.md` or autonomous maintenance |
 | `/schedule [description]` — alias `/routines` | routine 作成/更新/list/run。Anthropic 管理 cloud で実行 |
 | `/teleport` — alias `/tp` | claude.ai/web session を端末に引き寄せ (= branch + 会話を fetch)。claude.ai サブスク必須 |
@@ -185,6 +185,14 @@
 ## MCP prompts (動的)
 
 MCP server が公開する prompt は **動的** に `/mcp__<server>__<prompt>` 形式で出現。詳細は [code.claude.com/docs/en/mcp](https://code.claude.com/docs/en/mcp) (公式)。本書では列挙不可 (= 接続 server 依存)。
+
+## プロンプト prefix
+
+| prefix | 説明 |
+|---|---|
+| `!<command>` | bash mode: 入力をシェル実行。v2.1.186 以降は実行後 Claude が結果に自動応答するのが既定 [spec]。従来の「context 投入のみ」挙動に戻すには `settings.json` の `"respondToBashCommands": false` [実機検証済: v2.1.193 で flag 認識を確認] |
+| `#<text>` | memory mode: `CLAUDE.md` / auto-memory への追記 |
+| `@<path>` | path mention: 当該ファイルを context に load |
 
 ## バイナリ実装との突合
 
