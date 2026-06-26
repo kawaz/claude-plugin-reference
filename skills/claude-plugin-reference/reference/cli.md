@@ -17,6 +17,18 @@ claude [options] [command] [prompt]
 
 ## モード切替 (interactive ↔ --print)
 
+### 引数なし起動 = agents モード [実機検証済: v2.1.193]
+
+`claude` を **引数 prompt 無し + `--session-id` 無し**で起動すると、最近 (= 概ね v2.1.18x 以降) は **agents モード**で起動する (= 既存 background agent の一覧 UI、入力すると新規 session が **background 化** される / フォアグラウンドで attach しない)。フォアグラウンドの通常 session を引数 prompt 無しで起動するには **`--session-id <uuid>`** を明示する:
+
+```bash
+claude --session-id "$(uuidgen | tr A-Z a-z)"
+```
+
+なお SessionStart hook の `hookSpecificOutput.additionalContext` 等の経路で AI を自走 trigger することは **できない** (= [hooks.md](hooks.md) §7.1 検証参照、ユーザの prompt submit 必須)。「起動時に勝手にやってほしい」系の plugin 設計は **kawaz が引数 prompt (`aaa` でも可) を渡す前提** で組む必要がある。
+
+
+
 | option | 説明 | 依存 |
 |---|---|---|
 | `-p, --print` | 1 turn で exit。pipe 用途 | - |
@@ -179,7 +191,7 @@ error: option '--output-format <format>' argument 'invalid' is invalid. Allowed 
 
 | option | 説明 |
 |---|---|
-| `--settings <file-or-json>` | 設定 JSON file path **または** JSON 文字列 |
+| `--settings <file-or-json>` | 設定 JSON file path **または** JSON 文字列。**`hooks` field も load される** ([実機検証済: v2.1.193] user-scope `~/.claude*/settings.json` の hooks と additive merge して両方発火)。**複数 `--settings` は last-wins** ([実機検証済: v2.1.193] CC 自身は最後の 1 個のみ採用、hook arrays の concat はしない — cmux 等は事前に deep merge して 1 個で渡す回避策を取る) |
 | `--setting-sources <user,project,local>` | 読込スコープを限定 (default は全部) |
 | `--add-dir <directories...>` | tool アクセス許可ディレクトリ追加 (`--bare` 時は CLAUDE.md 探索 dir も兼ねる) |
 | `--mcp-config <configs...>` | MCP server config (JSON file path **または** JSON 文字列、複数可) |
@@ -283,6 +295,8 @@ claude --debug-file /tmp/debug.log -p "..."   # --debug 不要、file 出力だ�
 - `ANTHROPIC_API_KEY=sk-bogus claude --bare -p hi` → `Invalid API key · Fix external API key` (= OAuth は試さない、必ず API key 経路)
 
 > **distribution.md の `--safe-mode` 表との整合**: 同 doc の表は当初「safe-mode で skills が無効」と書いていたが、実機では **bundled skills は残る** (= plugin/user 起源の skill のみ無効)。`disableBundledSkills` との二段構えで全 skill を完全に消す。
+
+> **`--safe-mode` は hook 検証 isolation には使えない** [実機検証済: v2.1.193]: 起動 UI に「`Safe mode: all customizations are disabled (CLAUDE.md, skills, plugins, hooks, MCP, agents, and more)`」と明示されるとおり、**hook も含めて全 customizations が disable** される。「個人 plugin hook の干渉を避けて project-scope hook だけ検証する」用途には使えない (= 検証対象の hook も無効化される) ので、temp dir + unique token で個人 plugin との混在から区別する方針が正攻法。
 
 ## 構造化出力 (`--json-schema`)
 

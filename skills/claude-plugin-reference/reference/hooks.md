@@ -21,6 +21,14 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 
 `PreToolUse` の permission decision が複数 hook で衝突した場合、**最も制限的な結果が勝つ** (`deny > ask > allow`)。[spec]
 
+### project-scope の正本 / 紛らわしい誤配置
+
+- **正本**: `.claude/settings.json` の `hooks` field [実機検証済: v2.1.193]
+- **`.claude/hooks.json` 単独ファイルは認識されない** — 「`hooks/hooks.json`」は **plugin 専用形式** (= plugin root 直下の `hooks/hooks.json`)。project-scope で `.claude/hooks.json` を置いても silent に無視されるので注意 [実機検証済: v2.1.193, side effect file の発火記録なしで確認]
+- `--settings <file>` 経路の `hooks` field も発火する。user-scope settings (= `~/.claude/settings.json` 等) と **additive merge** されて両方の hook が並行発火する [実機検証済: v2.1.193]
+- **複数 `--settings` は last-wins** (= CC は最後の 1 個のみ採用、hook arrays の concat はしない)。cmux 等は事前に deep merge して `--settings` 1 個で渡す回避策を取る [実機検証済: v2.1.193, cmux-claude-wrapper 内コメント記述と一致]
+- **workspace trust 未取得** の workspace では `permissions.allow` は ignored になるが、**`hooks` field は発火する** (非対称) [実機検証済: v2.1.193]
+
 ## 2. Hook event 一覧
 
 ### 2.1 セッション系
@@ -229,7 +237,7 @@ Permission deny rule "Read(file_path:...)" targets file_path as a raw string and
 
 | 変数 | 値 | 範囲 |
 |---|---|---|
-| `CLAUDE_PROJECT_DIR` | project root (= git toplevel or cwd) | 全 hook |
+| `CLAUDE_PROJECT_DIR` | **cwd 起点で解決** ([実機検証済: v2.1.193] `--settings file` 配置 dir / `--add-dir` は反映しない、cwd ≠ project root の場合 `$CLAUDE_PROJECT_DIR/...` を使う hook command は silent fail) | 全 hook |
 | `CLAUDE_PLUGIN_ROOT` | `$CLAUDE_CONFIG_DIR/plugins/cache/<id>/<version>/` | plugin hook のみ |
 | `CLAUDE_PLUGIN_DATA` | `$CLAUDE_CONFIG_DIR/plugins/data/<id>/` (= plugin update でも保持) | plugin hook のみ |
 | `CLAUDE_ENV_FILE` | temp file path、source して env 反映 | CwdChanged / SessionStart 等 |
@@ -377,7 +385,23 @@ output `hookSpecificOutput` 固有フィールド [実機検証済: v2.1.170]:
 ```
 
 - `additionalContext`: claude のコンテキストに inject される追加テキスト (= tool event で `stdout` text を直接出してもこれに入る)。`Stop` / `SubagentStop` でも `hookSpecificOutput.additionalContext` が有効で、**hook error 扱いにならず会話を継続したまま** feedback を注入できる [実機検証済: v2.1.170]
+- `systemMessage`: **UI 通知専用** — 画面に `<EventName>:<source> says: <text>` 形式で表示されるだけで、**AI context には注入されない** (= AI に直接「context に含まれるか」と聞かせて `Yes` を引き出せない、`additionalContext` と用途が違う) [実機検証済: v2.1.193]
 - `hookSpecificOutput`: event ごとの decision (= PreToolUse なら permission、PermissionRequest なら behavior)
+
+### SessionStart hook で AI を自走させる経路は存在しない [実機検証済: v2.1.193]
+
+引数 prompt 無し起動 (`claude` のみ) で AI を自走 trigger する hook output 経路は **無い**。検証した 6 mode 全 fail: `additionalContext` / 推測フィールド `injectAsUserPrompt` / `hookSpecificOutput.userMessage` / top-level `userPrompt` / `systemMessage` / async 経路の 2 行目 `systemMessage`。`additionalContext` は AI context に届くが「AI が自発的に何か実行する」ことはない (= ユーザの prompt submit が turn を回す前提)。自動実行を期待する plugin は**起動時の引数 prompt** をユーザに要求する必要がある。
+
+### async hook 経路 [実機検証済: v2.1.193]
+
+stdout 1 行目に `{"async": true, "asyncTimeout": <ms>}` を出力すると **claude プロセス側が hook を background 化**して session 開始を待たない。完了時に「`Async hook <hookName> completed`」UI 通知が出る (= sync の「`<EventName>:<source> hook success:`」と別経路)。
+
+- `asyncTimeout` 既定 15000 ms、`forceSyncExecution: true` 指定で sync 強制
+- **自動検出経路あり**: 1 行目 JSON が async response shape を持てば `async: true` 明記なしでも async 化 (= バイナリ内部 `ome()` 判定)
+- exit 後、stdout の **2 行目以降を行ごとに JSON parse**、最初の **非 async** JSON 行が hook response として採用される (= `metrics` キーは hook metrics event に forward)
+- async response の value は **bool/finite-number に限定** (= 公式 docs に「short strings 可」と書かれているのは誤り、ensure_agent_sdk.py の Anthropic 実装コメント由来)
+- **async 経路の `systemMessage` も UI 通知** (= AI context に届かないのは sync 経路と同じ)
+- 出典: `claude-plugins-official/security-guidance` の `hooks/ensure_agent_sdk.py:722-740` が venv 構築を bg 化するため明示 async を返す canonical 例
 
 ### 7.2 Exit code 意味
 
