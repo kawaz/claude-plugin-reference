@@ -236,6 +236,8 @@ error: option '--output-format <format>' argument 'invalid' is invalid. Allowed 
 
 `--permission-mode` の choices は `acceptEdits` / `auto` / `bypassPermissions` / `default` / `dontAsk` / `plan` 6 種。未知値は即 error。
 
+[実機検証済: v2.1.199] `claude --dangerously-skip-permissions daemon status` は `daemon` を chat prompt 文字列と誤認せず subcommand として正しくルーティングされる。
+
 ## デバッグ / 診断
 
 | option | 説明 |
@@ -340,7 +342,7 @@ haiku では schema 解釈が弱い場合あり、sonnet 以上推奨。
 | `--remote-control [name]` | Remote Control 有効化 (= MCP/SDK 経路) |
 | `--remote-control-session-name-prefix <prefix>` | auto-generated session 名の prefix (default: hostname) |
 | `--brief` | `SendUserMessage` tool (agent → user) を有効化 |
-| `--bg`, `--background` | session を background agent として起動し即 return (= `claude agents` で管理)。[実機検証済: v2.1.193] `claude --help` にリスト掲載 (v2.1.187 で help 漏れ修正) |
+| `--bg`, `--background` | session を background agent として起動し即 return (= `claude agents` で管理)。[実機検証済: v2.1.193] `claude --help` にリスト掲載 (v2.1.187 で help 漏れ修正)。[実機検証済: v2.1.199] `--print`/`-p` との併用は unattachable session を silently 作らず、`--bg and --print conflict: ...` で即 reject される |
 | `--betas <betas...>` | beta header を API request に付与 (API key user のみ) |
 
 ## メタ
@@ -376,6 +378,8 @@ haiku では schema 解釈が弱い場合あり、sonnet 以上推奨。
 
 `claude plugin list` には `--enabled` / `--disabled` フィルタは **無い** (対話 UI `/plugin list` のみ)。詳細は [distribution.md](distribution.md#plugin-list--有効無効フィルタ-実機検証済-v21170)。
 
+[実機検証済: v2.1.199] `claude plugin validate <marketplace-dir>` は `source: "."` (= marketplace.json と同じ場所にある plugin) を skip せず、複数 plugin entry それぞれの異なるエラークラスを **全部まとめて** 報告する (= 1 件目のエラークラスで打ち切らない)。
+
 ### `claude mcp`
 
 | subcommand | 主要 option |
@@ -390,6 +394,8 @@ haiku では schema 解釈が弱い場合あり、sonnet 以上推奨。
 | `login <name>` | MCP server (HTTP / SSE / claude.ai connector) に OAuth 認証。`--no-browser` で authorization URL を stdout に出して stdin で redirect URL を貼り戻す経路 (= SSH / headless 用)。[実機検証済: v2.1.193] (v2.1.186 新規) |
 | `logout <name>` | 保存済み OAuth credential を削除。[実機検証済: v2.1.193] (v2.1.186 新規) |
 | `serve` | Claude Code MCP server 起動 (`-d`/`--debug`, `--verbose`) |
+
+`list`/`get` はセキュリティ修正 (v2.1.196) により、workspace 未信頼時は committed `.claude/settings.json` 経由で self-approved 済みの `.mcp.json` server も spawn しなくなった (= `⏸ Pending approval` 表示、実機未検証、出典: CHANGELOG v2.1.196) [spec]。
 
 ### `claude auth`
 
@@ -413,6 +419,10 @@ haiku では schema 解釈が弱い場合あり、sonnet 以上推奨。
 
 `--add-dir`, `--agent`, `--allow-dangerously-skip-permissions`, `--cwd <path>` (= 起動 cwd でフィルタ), `--dangerously-skip-permissions`, `--effort`, `--json` (= active sessions 一覧、`--all` で完了済みも含む), `--mcp-config`, `--model`, `--permission-mode`, `--plugin-dir`, `--setting-sources`, `--settings`, `--strict-mcp-config`
 
+[実機検証済: v2.1.199] `claude agents --help` の option 説明: `--dangerously-skip-permissions` は "Alias for --permission-mode bypassPermissions"、`--allow-dangerously-skip-permissions` は "Make bypass-permissions mode available to dispatched sessions without defaulting to it"。
+
+[未検証] `claude agents --dangerously-skip-permissions` で agent view から dispatch した session が bypass mode disclaimer 付きで実際に bypass 適用されること (v2.1.196 で「silently auto mode に fallback していた」バグを修正、出典: CHANGELOG v2.1.196)。dispatch は対話 TUI 経由のみで headless 検証不可。
+
 ### `claude project`
 
 | subcommand | 説明 |
@@ -428,6 +438,7 @@ haiku では schema 解釈が弱い場合あり、sonnet 以上推奨。
 | `update` / `upgrade` | update check + install |
 | `setup-token` | 長期 auth token セットアップ (Claude subscription 必須) |
 | `ultrareview [target]` | cloud 上で multi-agent code review (`--json` で raw bugs.json, `--timeout <minutes>` default 30) |
+| `daemon <run\|status\|logs\|uninstall\|stop>` | background agent supervisor 管理 (`status`: pid/uptime、`stop --any`: 非 service daemon も停止、`stop --keep-workers`: session は残す)。[実機検証済: v2.1.199] `claude --help` の Commands 一覧には載らない非公開 subcommand |
 
 ## 環境変数 (CLI フラグと連動)
 

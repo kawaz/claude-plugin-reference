@@ -16,6 +16,10 @@
 - `[max: vX.Y.Z]` — その version 以前のみ (= 後継版で削除)
 - alias は本コマンド行末に併記
 
+## Skill のスタック起動 (`/skill-a /skill-b do XYZ`)
+
+先頭から連続する `/name` トークンを skill 名として複数個認識し、末尾のテキストを各 skill の引数として渡す。上限は公式 docs ([code.claude.com/docs/en/commands](https://code.claude.com/docs/en/commands)) で「最大 6 skill」と明記 [spec v2.1.199] — CHANGELOG v2.1.199 の「先頭 5 skill まで」という表記と数値が食い違う。headless (`-p`) では skill ごとの実際のロード有無が安定して再現できず、上限値自体の実機確認はできず [未検証 v2.1.199]。
+
 ## セットアップ / 起動
 
 | command | 説明 |
@@ -89,20 +93,19 @@
 
 | command | 説明 |
 |---|---|
-| `/plugin [subcommand]` | plugin 管理。引数なしで menu、または `list` / `install` / `enable` / `disable` 直叩き。CLI 等価: [`claude plugin`](cli.md#claude-plugin--claude-plugins) |
+| `/plugin [subcommand]` | plugin 管理。引数なしで menu、または `list` / `install` / `enable` / `disable` 直叩き。CLI 等価: [`claude plugin`](cli.md#claude-plugin--claude-plugins)。v2.1.195 で `plugin.json` の `name` と marketplace entry name が異なる場合に Enable/Disable が動作しないバグを修正 [spec v2.1.195] |
 | `/reload-plugins [--force]` | 有効 plugin を再読み込み。component reload 数を報告。MCP tool 一覧が変わって prompt cache 失効する場合は **`--force` 無しなら skip + warn** |
 | `/reload-skills` [min: 2.1.152] | skill / commands dir を再 scan (= 起動中に追加/変更された skill を反映) |
 | `/skills` | 利用可能 skill 一覧。`t` で token 数ソート、`Space` で hide → `Enter` で保存 |
 | `/hooks` | hook 設定確認 (tool event 用)。仕様は [hooks.md](hooks.md) |
 | `/mcp [reconnect <server>\|enable\|disable [<server>\|all]]` | MCP server 接続と OAuth 管理。CLI 等価: [`claude mcp`](cli.md#claude-mcp) |
-| `/agents` | subagent 設定管理。CLI 等価: [`claude agents`](cli.md#claude-agents-background-agents) |
 | `/memory` | `CLAUDE.md` 編集 + auto-memory ON/OFF + auto-memory entry view |
 
 ## レビュー / 検証 / 修正
 
 | command | 説明 |
 |---|---|
-| `/code-review [low\|medium\|high\|xhigh\|max\|ultra] [--fix] [--comment] [target]` [Skill] | working tree diff のレビュー。`--fix` で適用、`--comment` で GH PR inline、`ultra` で [`/ultrareview`](#ultrareview-related)。v2.1.154 以降は `/simplify` が cleanup-only 経路で分離 |
+| `/code-review [low\|medium\|high\|xhigh\|max\|ultra] [--fix] [--comment] [target]` [Skill] | working tree diff のレビュー。`--fix` で適用、`--comment` で GH PR inline、`ultra` で [`/ultrareview`](#ultrareview-related)。v2.1.154 以降は `/simplify` が cleanup-only 経路で分離。内部実装: v2.1.196 で 5 つの cleanup finder を 1 つに統合、token 使用量 ~25% 削減 (ユーザ向け挙動に変更なし) [spec v2.1.196] |
 | `/simplify [target]` [Skill] [min: 2.1.154] | 4 つの review agent (reuse / simplification / efficiency / abstraction) 並列で cleanup 適用。**bug 探しはしない** → bug は `/code-review`。<v2.1.154 では `/code-review --fix` の alias |
 | `/review [PR]` | PR を **ローカル** session でレビュー。v2.1.186 以降は `/code-review medium` と同じ review engine を使用 [spec]。cloud は `/code-review ultra` |
 | `/security-review` | 現在 branch の git diff を脆弱性観点でレビュー (injection / auth / data exposure) |
@@ -136,6 +139,7 @@
 | `/ultraplan <prompt>` | ultraplan session で plan 作成 → browser でレビュー → リモート実行 or 端末送り |
 | `/ultrareview [PR]` <a id="ultrareview-related"></a> | cloud sandbox で multi-agent code review。優先呼出は `/code-review ultra` (これは alias 経路)。Pro/Max で 3 free run、以降 usage credits |
 | `/claude-api [migrate\|managed-agents-onboard]` [Skill] | プロジェクト言語 (Py/TS/Java/Go/Ruby/C#/PHP/cURL) で API reference を load。`anthropic` / `@anthropic-ai/sdk` import で自動 activate。`migrate` で旧モデルから新モデルへの code 更新、`managed-agents-onboard` で Managed Agent 作成 walkthrough |
+| `/dataviz [request]` [Skill] [min: 2.1.198] | チャート/ダッシュボードのデザイン指針。データに応じた chart form 選択・色の役割割当を行い、同梱 script で colorblind safety / contrast を検証。brand-neutral な placeholder palette を独自色へ差し替える前提 [実機検証済: v2.1.199] |
 
 ## チーム / 配布 / 紹介
 
@@ -171,6 +175,7 @@
 |---|---|
 | `/pr-comments [PR]` [max: 2.1.90] | v2.1.91 で削除。代わりに直接 claude に「この PR の comment 見て」と頼む |
 | `/vim` [max: 2.1.91] | v2.1.92 で削除。`/config` → Editor mode で切替 |
+| `/agents` [max: 2.1.197] | v2.1.198 で subagent 設定 wizard を削除 [実機検証済: v2.1.199]。代わりに claude に subagent の作成/管理を頼むか `.claude/agents/` (project) / `~/.claude/agents/` (全 project) を直接編集。background agent 管理の [`claude agents`](cli.md#claude-agents-background-agents) CLI とは別物 |
 
 ## モバイル / その他
 

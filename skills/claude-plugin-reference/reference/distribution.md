@@ -288,6 +288,11 @@ update を発火させる。
 
 参考実装: **kawaz/bump-semver** (`brew upgrade`) / **kawaz/claude-gh-monitor** (plugin update 適用)。
 
+## `claude plugin validate` [実機検証済: v2.1.199]
+
+- marketplace 内で `source: "."` (= marketplace 自身のディレクトリを指す local plugin) もスキップされず検証される。`plugins[N] plugin.json → <field>` 形式でエラー/警告が個別 plugin ごとに出る
+- 複数の error class (例: `commands[]` と `hooks[]` それぞれの path not found) が同時にあれば 1 回の実行で両方まとめて報告される (最初の error class で停止しない)
+
 ## plugin list — 有効/無効フィルタ [実機検証済: v2.1.170]
 
 CLI の `claude plugin list` には `--enabled` / `--disabled` フィルタは**存在しない**。
@@ -350,6 +355,23 @@ claude plugin disable my-tool@skills-dir
 rm -rf "$CLAUDE_CONFIG_DIR/skills/my-tool"
 ```
 
+## plugin.json `name` と marketplace entry `name` の不一致 [実機検証済: v2.1.199]
+
+`plugin.json` の `name` (internal) と marketplace entry の `name` (public) が異なっていても、`claude plugin enable/disable <marketplace-entry名>@<marketplace>` は正しく解決して動作する。`id` / `enabledPlugins` のキーは常に marketplace entry name が使われ、internal name を指定しても別 plugin 扱いで解決されない (CLI で確認)。`/plugin` (対話 UI) の Enable/Disable も同一問題の修正対象 (CHANGELOG v2.1.195) だが headless 検証不可 [未検証: headless 不可]。
+
+## plugin dependencies — version 制約 [実機検証済: v2.1.199]
+
+`dependencies` 配列は文字列 (plugin 名のみ、最新を追従) または `{ "name", "version": "<semver range>", "marketplace"? }` の object を取り、宣言元 plugin の marketplace リポにある git tag `{plugin-name}--v{version}` に解決される。
+
+```json
+"dependencies": [
+  "audit-logger",
+  { "name": "secrets-vault", "version": "^1.0.0" }
+]
+```
+
+marketplace が **git repo backed のローカルフォルダパス**として追加されていても tag 解決が効く。実機確認: `^1.0.0` 制約を持つ dependency が、HEAD 上の非互換な現在内容ではなく `dep-plugin--v1.0.0` タグのコミット内容で install された (installed cache dir 名は `<version>-<タグのコミット SHA 先頭12桁>`)。v2.1.196 のバグ修正 (それ以前はこの構成の marketplace で tag を読まず、ローカルコピーの HEAD 内容がそのまま使われていた)。
+
 ## `defaultEnabled: false` — インストール時無効化 [spec]
 
 出典: [Plugins Reference](https://code.claude.com/docs/en/plugins-reference.md)。実機検証は未実施 (= install→enable の往復が必要で重いため spec 引用に留める)。
@@ -381,6 +403,10 @@ rm -rf "$CLAUDE_CONFIG_DIR/skills/my-tool"
 ## marketplace install リトライ用 env flag [spec]
 
 - `CLAUDE_CODE_PLUGIN_KEEP_MARKETPLACE_ON_FAILURE=1` — install 失敗時に clone 済み marketplace ディレクトリを保持し再試行に再利用させる。v2.1.178 で fresh install が clone をスキップしてしまう bug 修正済み [spec] (CHANGELOG v2.1.178)
+
+## 外部 plugin の install consent [実機検証済: v2.1.199]
+
+project の `.claude/settings.json` だけで `enabledPlugins` / `extraKnownMarketplaces` を宣言しても、その marketplace は自動登録されず plugin もロードされない (= 明示的な install/trust なしでは全 loader path でロードされない、CHANGELOG v2.1.195)。実機確認: headless 実行時の debug log に `Skipping orphaned enabledPlugins entry <id>: marketplace not registered` が出て、当該 plugin は `claude plugin list --json` にも現れなかった。
 
 ## トラブルシュート — `--safe-mode` と bundled skills 無効化
 
@@ -449,6 +475,7 @@ CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1 claude
 
 - [ ] `/plugin list --enabled` / `--disabled` フィルタ (§plugin list、対話 UI 専用)
 - [ ] `/plugin` の marketplace 内 plugin ブラウズの検索バー (対話 UI 専用) 出典: CHANGELOG v2.1.172
+- [ ] `/plugin` Enable/Disable の name 不一致修正 (§plugin.json name と marketplace entry name の不一致、CLI 側は実機確認済、対話 UI 側は headless 不可) 出典: CHANGELOG v2.1.195
 
 ### TODO
 

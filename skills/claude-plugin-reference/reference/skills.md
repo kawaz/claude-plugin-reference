@@ -240,6 +240,12 @@ skill frontmatter の `disallowed-tools` に挙げた tool は、その skill �
 - 用途: 自律 loop skill で `AskUserQuestion` を封じる / 破壊的 tool を一時的に外す等
 - 全 skill / prompt 横断で恒久 block したい場合は permission settings の deny rule を使う (= こちらは skill scoped)
 
+### 6.2 Stacked slash-skill invocation (`/skill-a /skill-b ...`)
+
+message 先頭で複数 skill を連続起動すると (`/code-review /fix-issue 123`)、先頭 skill + 後続 skill が全てロードされ、末尾テキストが各 skill の `$ARGUMENTS` として渡される (v2.1.199〜、それ以前は先頭 1 skill のみロードされ残りは literal 引数扱い)。展開は「inline user-invocable でない skill」(`context: fork` の subagent 実行等) か「引数が `/` で始まりうる skill」(`/loop` 等) に遭遇した時点で停止し、それ以降は argument text 扱い。[spec] (公式 `skills.md` "You can also stack several skills..." 節)。**上限の数値表現が出典間で食い違う**: 公式 docs は「先頭 + 後続最大 5 個 (= 計 6 個)」、CHANGELOG v2.1.199 は「up to 5」とだけ記載 (計 5 個とも読める) — 未確定。
+
+**headless (`-p`) では未再現** [実機検証済: v2.1.199]: temp project に 2 custom skill (乱数トークン埋め込み) を置き `claude -p '/skilla /skillb 123'` を実行 (haiku / default model、`-p` 引数渡し / stdin 渡しの計 4 パターン) → 常に `skilla` のみロードされ `"/skillb 123"` は skilla への literal `$ARGUMENTS` として渡された (skillb 側のトークンは一切コンテキストに現れず)。対話 UI (1 skill ずつ typing で確定する入力) 前提の機能の可能性があり、`-p` 単発プロンプト文字列には非対応と見られる。対話 UI 実機は未検証。
+
 ## 7. Skill content lifecycle
 
 - skill invocation 時、本文が **single message として会話に挿入**
@@ -370,7 +376,7 @@ agent: general-purpose         # subagent type
 
 ### headless 不可
 
-- (現状なし)
+- [ ] Stacked slash-skill invocation (§6.2) の対話 UI 実機確認: headless `-p` では機能自体が再現しない (実機検証済、常に先頭 skill のみロード) ため、上限数 (先頭+5 vs 計 5) は対話 UI でのみ検証可能
 
 ### TODO
 

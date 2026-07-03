@@ -33,10 +33,10 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 
 | event | matcher 値 | タイミング | 主要用途 | 何ができるか | blockable |
 |---|---|---|---|---|---|
-| `SessionStart` | `startup` / `resume` / `clear` / `compact` | session 開始 / resume / clear / compact 後 | env 初期化 / meta 書き込み / direnv 連携 / skill 動的設置 | additionalContext で文脈 inject / `sessionTitle` で title 設定 / `reloadSkills:true` で skill 再スキャン (= §6.2、[実機検証済: v2.1.170]) | × (exit 2 は stderr 表示のみ) |
+| `SessionStart` | `startup` / `resume` / `clear` / `compact` | session 開始 / resume / clear / compact 後 | env 初期化 / meta 書き込み / direnv 連携 / skill 動的設置 | additionalContext で文脈 inject / `sessionTitle` で title 設定 / `reloadSkills:true` で skill 再スキャン (= §6.2、[実機検証済: v2.1.170]) | × (exit 2 は stderr 表示のみ、transcript に `hook_non_blocking_error` attachment として記録される。従来は silently 隠蔽、v2.1.199 で修正) [実機検証済: v2.1.199] |
 | `SessionEnd` | (なし) | session 終了直前 | cleanup / 永続化 | (output 無視) | × |
 | `post-session` | (なし) | **session 終了後・workspace 削除前** (self-hosted runner 専用) | 未コミット成果の snapshot / log export | 子プロセスの SIGTERM→SIGKILL 猶予 (既定 5s) を設定可 | [未検証: headless 不可] |
-| `Setup` | `init` / `maintenance` | `--init-only` or `-p --init/--maintenance` 実行時 | 初期化処理 | (用途限定) | × |
+| `Setup` | `init` / `maintenance` | `--init-only` or `-p --init/--maintenance` 実行時 | 初期化処理 | (用途限定) | × (exit 2 は stderr 表示のみ、SessionStart と同様の非隠蔽化を確認。`--init-only` は headless でも session transcript を生成しないため debug log 経由で確認) [実機検証済: v2.1.199] |
 
 > **`post-session` (changelog 2.1.169) [未検証: headless 不可]**: self-hosted runner (CI runner 等) のライフサイクルで、session 終了 → workspace 削除の **間** に走る lifecycle hook。ローカル対話 / headless `claude -p` には「workspace 削除フェーズ」が存在しないため **構造的に実機検証不能** (= 個人環境では発火させられない)。公式 hooks reference (code.claude.com/docs/en/hooks.md) にも未記載で、出典は CHANGELOG 2.1.169 のみ。
 > **SessionEnd との差**: `SessionEnd` は session 終了「直前」に走り output は無視される汎用 cleanup フック。`post-session` は session 終了「後」かつ runner が workspace を破棄する「前」という self-hosted runner 限定のタイミングで、未コミット作業の退避 / ログ持ち出しと、子プロセス強制終了の猶予時間調整を目的とする。
@@ -65,7 +65,7 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 |---|---|---|---|---|---|
 | `Stop` | (なし) | 毎 turn 終了直後 | task 完了確認 | `decision: "block"` + `reason` で turn 再開 (max 8 連続)。または `hookSpecificOutput.additionalContext` で **hook error 扱いにせず** feedback 注入して会話継続 [実機検証済: v2.1.170] | ✓ |
 | `StopFailure` | (なし) | turn が API error で失敗 | エラー報告 | (output 無視) | × |
-| `Notification` | type (e.g. `permission_prompt`, `idle_prompt`, `auth_success`, `elicitation_dialog`) | notification 表示直前 | desktop 通知 / sound | terminalSequence で OSC 777 等 | × |
+| `Notification` | type (`permission_prompt` / `idle_prompt` / `auth_success` / `elicitation_dialog` / `agent_needs_input` / `agent_completed` [spec、background agent 用、v2.1.198] 等) | notification 表示直前 | desktop 通知 / sound | terminalSequence で OSC 777 等 | × |
 
 ### 2.5 Compaction / Cwd / FS 系
 
@@ -84,7 +84,7 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 
 | event | matcher | タイミング | 主要用途 | 何ができるか | blockable |
 |---|---|---|---|---|---|
-| `SubagentStart` | agent type | subagent spawn 直前 | log / 拒否 | [未検証: TODO] | [未検証: TODO] |
+| `SubagentStart` | agent type | subagent spawn 直前 | log / 拒否 | [未検証: TODO] | × (exit 2 は spawn をブロックしない、stderr は subagent 自身の transcript に `hook_non_blocking_error` attachment として記録される。従来は silently 隠蔽、v2.1.199 で修正) [実機検証済: v2.1.199] |
 | `SubagentStop` | agent type | subagent 終了直後 | result 加工 | `decision: "block"` + `reason` で subagent turn 再開、または `hookSpecificOutput.additionalContext` で feedback 注入し継続 (= Stop と同等)。発火は [実機検証済: v2.1.170]、additionalContext の注入先は subagent コンテキスト [spec] | ✓ [spec、block 動作は未検証] |
 | `TaskCreated` | (なし) | TaskCreate 生成直前 | task 監査 | [未検証: TODO] | [未検証: TODO] |
 | `TaskCompleted` | (なし) | task completion 直前 | result 確認 | [未検証: TODO] | [未検証: TODO] |
@@ -151,6 +151,12 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 | `"Tool1,Tool2"` | comma 区切り alternation。両 tool で hook 発火 [実機検証済: v2.1.193]。以前は silent に発火しない bug があったが v2.1.191 で修正 [spec] | `"Bash,Read"` |
 | `^Notebook` / `mcp__.*` | regex | MCP tool 命名 `mcp__<server>__<tool>` を `.*` で拾える |
 | event 固有値 | SessionStart の `startup`/`resume`/`clear`/`compact` 等 | (event ごとに値が違う) |
+
+#### ハイフンを含む識別子の exact-match 化 (v2.1.195、破壊的変更) [実機検証済: v2.1.199]
+
+`"ToolName"` 完全一致ルール (上表) は、v2.1.195 より前は **ハイフンを含む識別子** (agent type 名 `code-reviewer`、MCP server 由来の `mcp__brave-search__...` 等) に対して誤って substring match していたバグがあった。v2.1.195 で修正され、ハイフン付き matcher も他の matcher と同様に完全一致のみになった。
+
+実機確認 (`SubagentStart` の agent type matcher、`--agents` で `test-hyphen-agent` を定義): matcher `test-hyphen` (対象名の部分文字列) は **発火せず**、matcher `test-hyphen-agent` (完全一致) のみ発火した。= ハイフン付き MCP server 配下の全 tool に一括マッチさせたい場合は `mcp__brave-search__.*` のような明示 regex パターンが必要 (`"mcp__brave-search"` だけでは何にもマッチしない)。
 
 ### `if` field (v2.1.85+, blockable event 限定)
 
@@ -353,9 +359,11 @@ output `hookSpecificOutput` 固有フィールド [実機検証済: v2.1.170]:
 
 ```json
 {
-  "notification_type": "permission_prompt|idle_prompt|auth_success|elicitation_dialog|..."
+  "notification_type": "permission_prompt|idle_prompt|auth_success|elicitation_dialog|agent_needs_input|agent_completed|..."
 }
 ```
+
+`agent_needs_input` / `agent_completed` (v2.1.198) は background agent (`claude agents` で管理するセッション) が入力待ち / 完了になった時に発火 [spec]。`idle_prompt` の発火自体は `claude --bg` で実機確認済みだが [実機検証済: v2.1.199]、`agent_needs_input`/`agent_completed` は headless (`--bg` dispatch + 非対話ポーリング) では複数シナリオ (通常完了 / permission 不要コマンド / `PermissionRequest` hook で強制 `ask`) いずれでも再現できず [未検証: headless 不可、`claude agents` の対話 UI view が前提の可能性]。
 
 詳細は event ごとに公式 docs (= `hooks.md`) 参照。[spec]
 
@@ -410,7 +418,7 @@ stdout 1 行目に `{"async": true, "asyncTimeout": <ms>}` を出力すると **
 | exit code | 意味 | behavior |
 |---|---|---|
 | **0** | 成功、decision なし | stdout JSON があれば parse & apply、text なら additionalContext へ |
-| **2** | block / error | event ごとに block (= PreToolUse: tool block、UserPromptSubmit: turn 拒否、Stop: turn 再開、SessionStart/SessionEnd/Notification は ignored) |
+| **2** | block / error | event ごとに block (= PreToolUse: tool block、UserPromptSubmit: turn 拒否、Stop/SubagentStop: turn 再開)。`SessionStart`/`Setup`/`SubagentStart` は block 不可、stderr が transcript に `hook_non_blocking_error` attachment として記録される (従来は silently 隠蔽、v2.1.199 で修正) [実機検証済: v2.1.199]。`SessionEnd`/`StopFailure` は exit code・output とも完全 ignored (詳細は §10.3) |
 | **その他** | non-blocking error | warning 表示、execution 継続、stderr 1 行目が transcript に |
 
 ### 7.3 PreToolUse permission decision の細部
@@ -572,8 +580,9 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 | `ConfigChange` | **block** | config reload を中断 |
 | `WorktreeCreate` | **block** (= default git behavior を replace) | hook が完全に worktree create を肩代わり |
 | `Stop` | **turn 再開** | 最大 8 連続 block 後に自動 continue (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` で cap 調整可) |
-| `SessionStart` | **stderr 表示のみ** (block 不可) | execution 継続 |
-| `Setup` | 同上 | |
+| `SessionStart` | **stderr 表示のみ** (block 不可)、transcript に `hook_non_blocking_error` attachment として記録 (従来 silently 隠蔽、v2.1.199 で修正) [実機検証済: v2.1.199] | execution 継続 |
+| `Setup` | 同上 [実機検証済: v2.1.199、debug log 経由で確認。`--init-only` は session transcript を生成しないため attachment 形式そのものは未確認] | |
+| `SubagentStart` | **stderr 表示のみ** (block 不可、subagent spawn は継続) | subagent 自身の transcript に `hook_non_blocking_error` attachment として記録 (従来 silently 隠蔽、v2.1.199 で修正) [実機検証済: v2.1.199] |
 | `SessionEnd` | **ignored** | output / exit code 完全無視 |
 | `StopFailure` | **ignored** | 同上 |
 | `Notification` | **block 不可** | stderr 表示のみ |
@@ -594,12 +603,13 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 ### headless 不可 (= 構造的に検証不能)
 
 - [ ] `post-session` event — self-hosted runner の workspace 削除フェーズが必要 (§2.1)
+- [ ] `Notification` の `agent_needs_input` / `agent_completed` — `claude agents` 対話 UI view が前提の可能性、`--bg` headless dispatch では未再現 (§2.4/§6.2)
 
 ### TODO (= 検証可能、格上げ対象)
 
 - [ ] `PreCompact` / `PostCompact` / `CwdChanged` / `FileChanged` の出力解釈・blockable (§2.5)
 - [ ] `WorktreeRemove` / `InstructionsLoaded` の出力解釈・blockable (§2.5)
-- [ ] `SubagentStart` / `TaskCreated` / `TaskCompleted` / `TeammateIdle` の出力解釈・blockable (§2.6)
+- [ ] `SubagentStart` の hookSpecificOutput 経由の decision (= additionalContext 以外) / `TaskCreated` / `TaskCompleted` / `TeammateIdle` の出力解釈・blockable (§2.6。`SubagentStart` の exit 2 が spawn を block しないことは v2.1.199 で確認済み)
 - [ ] `Elicitation` / `ElicitationResult` の挙動 (MCP server 必要、§2.7)
 - [ ] `SubagentStop` の `decision: "block"` での turn 再開 (§2.6)
 - [ ] `permissionDecision: defer` の具体挙動 (§7.3)

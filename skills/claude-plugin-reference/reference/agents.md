@@ -82,6 +82,13 @@ You are a security reviewer. 変更を分析し、脆弱性・権限昇格・入
 - agent ファイルを `.claude/agents/` または `~/.claude/agents/` に**コピー**すれば制限解除 [spec]
 - または `settings.json` / `settings.local.json` の `permissions.allow` にルール追加 (ただし**セッション全体に効く**、plugin agent 限定にはならない) [spec]
 
+## 組み込み agent (built-in)
+
+CLI 組み込みの agent (plugin 非経由) も存在する。`claude agents --json` の `init` イベントの `agents` 配列に、plugin 提供分と並んで `Explore` / `general-purpose` / `Plan` / `statusline-setup` 等の名前が確認できる [実機検証済: v2.1.199]。
+
+- **Explore**: main session が `sonnet` / `opus` の場合、Explore subagent の transcript も同じモデルで実行されることを確認 (= モデル継承) [実機検証済: v2.1.199]。CHANGELOG は「main session のモデルを継承 (capped at opus)、従来は haiku 固定」と主張 (v2.1.198) [spec] — opus 超のモデルで main session を起動した際の cap 挙動は、検証中に main session 自体のモデルが途中で fallback する事象が発生し切り分けできず [未検証: TODO]
+- **general-purpose**: frontmatter 通り `model: inherit` で動作 (haiku session → haiku subagent を確認) [実機検証済: v2.1.199]
+
 ### Agent tool の permission matcher と background 経路
 
 - v2.1.186 で **`Agent(type:foo)` deny rule と `Agent(x,y)` allowed-types 制限が named subagent spawn に対しても enforce** されるよう修正 [spec] (CHANGELOG v2.1.186)
@@ -121,8 +128,26 @@ v2.1.178 で **nested `.claude/` の名前衝突は cwd に最も近いものが
 2. **明示呼び出し (自然言語)**: 「Use the security-reviewer subagent to ...」のように prompt で agent 名を指定
 3. **Task / Agent tool**: `subagent_type` に agent 名を渡して spawn
    - v2.1.178 で agent teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) は **`TeamCreate` / `TeamDelete` tool を削除**。各セッションに暗黙の team が常在し、Agent tool の **`name` parameter で teammate を直接 spawn** する。旧 `team_name` parameter は受理されるが ignored [spec] (CHANGELOG v2.1.178)
+   - v2.1.198 で agent teams (experimental): API エラーで死んだ teammate は lead に "failed" と報告されるようになり、詰まった teammate へのメッセージ送信で即座に retry させられるよう改善 [spec] (CHANGELOG v2.1.198)
+   - v2.1.199 で `SendMessage` tool: re-spawned agent が既存 agent と同名を再利用した際の誤ルーティングを検出し、呼び出し元に retarget を促すよう修正 [spec] (CHANGELOG v2.1.199)
 4. **セッション全体を agent 化**: `claude --agent <name>` または `settings.json` の `agent` key
    - plugin の `settings.json` でサポートされるのは `agent` と `subagentStatusLine` の 2 key のみ [spec]
+   - `claude agents --dangerously-skip-permissions` (= `--permission-mode bypassPermissions` の alias、`claude agents --help` で存在確認済み [実機検証済: v2.1.199]) は v2.1.196 で dispatch 先 background agent への bypass mode 適用漏れ (auto mode への silent fallback) を修正 [spec] (CHANGELOG v2.1.196)。dispatch 経路自体は対話 UI 専用のため挙動再現は未検証
+   - `claude agents` から dispatch した background agent は worktree でのコード作業完了時、質問せず commit / push / draft PR 作成まで自動で行うよう変更 (従来は stop して確認) [spec] (CHANGELOG v2.1.198)。対話 UI 専用のため未検証
+
+### 既定で background 実行 (v2.1.198+)
+
+Agent tool で spawn した subagent は既定で **background task として実行**され、終了時に通知される (従来は gradual rollout) [spec] (CHANGELOG v2.1.198)。`--output-format=stream-json` で観測すると次の system event 列が流れる [実機検証済: v2.1.199]:
+
+`task_started` (`subagent_type` / `prompt` 付き) → 子の tool_use (`parent_tool_use_id` で親の Agent tool_use id と紐付けられ同一ストリームに混在) → `task_progress` (`usage.tool_uses` / `duration_ms`) → `task_updated` (`status: "completed"`) → `task_notification` (`summary` に最終応答、`output_file` に subagent transcript への symlink)
+
+- subagent は起動元 agent からのメッセージを通常のタスク指示として扱うが、**その agent のメッセージがユーザの承認として扱われることは決してない**と明文化された [spec] (CHANGELOG v2.1.198)
+- subagent と context compaction は session の extended thinking 設定 (`--effort`) を継承する: `--effort low` の親から spawn した subagent の transcript には `thinking` content block が一切出現しない一方、`--effort max` の親からの subagent には `thinking` block が出現する (内容が空でも type としては出現) ことを確認 [実機検証済: v2.1.199] (CHANGELOG v2.1.198 は「output 品質向上のため」と説明)
+
+### subagent 失敗時の挙動 [spec] (CHANGELOG v2.1.199)
+
+- レート制限 / サーバエラーで打ち切られた subagent は、従来 silently 失敗していたが **部分成果 (partial work) を親 agent に返す**よう修正
+- subagent の API エラー (usage limit reached 等) が誤って成功結果として親に報告されるバグを修正、エラーは正しく親 agent に報告される
 
 ### subagent 自身による再帰 spawn (ネスト)
 
@@ -131,7 +156,7 @@ subagent (子) も自分の context で `Agent` / `Task` tool を使い、さら
 - 子が `Agent` tool を呼んで孫を起動でき、拒否されない (= 親→子→孫の 2 段ネストが成立) [実機検証済: v2.1.174]
 - トークン文字列を孫に渡し、孫→子→親と伝言させて最終応答まで往復できる (孫での加工も保持) ことを確認 [実機検証済: v2.1.174]
 - **最大 5 階層まで** [spec] (出典: CHANGELOG v2.1.172)。ただし v2.1.174 実測では反証: **183 階層の単一チェーンが一度も spawn 拒否されず成立** (= 拒否としての階層上限は観測されない) [実機検証済: v2.1.174]
-- v2.1.181 で foreground subagent も background と同じ 5 段 cap を尊重するよう修正 [spec] (CHANGELOG v2.1.181)。v2.1.174 の反証観測は本修正前。再観測 TODO
+- v2.1.181 で foreground subagent も background と同じ 5 段 cap を尊重するよう修正 [spec] (CHANGELOG v2.1.181)。**v2.1.199 で再観測**: Agent tool の再帰 spawn を実施したところ depth 1〜5 までは成立し、6 段目 (depth=5 の環境) では `Agent` tool 自体が ToolSearch で見つからず spawn 不能だった (= 明示的な拒否イベントではなく tool の不可視化で cap が働く) [実機検証済: v2.1.199]。v2.1.174 時点の「183 階層が拒否されず成立」という反証は解消された
 - v2.1.187 で depth tracking 修正: **resumed subagent は元の spawn depth を復元**、**forked subagent も depth cap にカウント**される [spec] (CHANGELOG v2.1.187)
 - ネストは transcript 上も一直線の親子連鎖として記録される (子の `subagents/agent-*.meta.json` の `toolUseId` = 親 transcript 内の Agent tool_use id、で親子辺を辿れる) [実機検証済: v2.1.174]
 - ネストには子が `Agent` / `Task` tool を持つことが前提。`tools` field で除外した場合に spawn 不能になるかは未観測 [未検証]
@@ -154,16 +179,24 @@ claude agents --json --all    # 完了済みセッションも含む
 | `cwd` | string | 常に | `"/path/to/repo"` |
 | `kind` | string | 常に | `"background"` / `"interactive"` |
 | `startedAt` | number | 常に | Unix ms タイムスタンプ |
-| `status` | string | ほぼ常に (起動直後は欠落の場合あり) | `"idle"` / `"busy"` |
+| `status` | string | ほぼ常に (起動直後は欠落の場合あり) | `"idle"` / `"busy"` / `"waiting"` |
 | `id` | string | **background のみ** | `"0ac2d19f"` (sessionId 先頭 8 文字) |
 | `name` | string | background かつ名前あり | `"config-setup-agents"` |
 | `state` | string | **background のみ** | `"blocked"` (他の値は未観測) |
-| `waitingFor` | string | waiting 状態時のみ (optional) | [未検証: TODO] 実機では未観測 |
+| `waitingFor` | string | waiting 状態時のみ (optional) | `"permission prompt"` [実機検証済: v2.1.199] |
 
 - `id`: background session の短縮識別子。`sessionId` の先頭 8 文字と一致する
 - `state`: background session の追加状態。`"blocked"` = permission prompt 等で待機中
-- `waitingFor` [未検証: TODO]: changelog 文言では「waiting session が何を待っているか (例: permission prompt)」。実機では出現条件を再現できておらず、値の形式は未確認
+- `waitingFor`: 実機で `status:"waiting"` と併せて値 `"permission prompt"` を観測 (= 権限確認待ちで停止中の session) [実機検証済: v2.1.199]。観測は `kind:"interactive"` の session のみ、`kind:"background"` での出現有無は未確認
 - `--all` [未検証: TODO]: `--help` 文言では「完了済みセッションも含む (the full agent view list)」。完了済みセッションが併存する状態での出力差は実機未観測
+
+## `/agents` wizard の廃止 (v2.1.198)
+
+対話用の agent 作成ウィザード `/agents` は削除された。headless (`-p`) で叩くと以下の案内が返る [実機検証済: v2.1.199]:
+
+> The /agents wizard has been removed. Ask Claude to create or update subagents for you (e.g. "create a code-reviewer subagent that ..."), or edit the files directly: `.claude/agents/` (this project) / `~/.claude/agents/` (all projects)
+
+`claude agents` (スペースなし CLI subcommand、§`claude agents --json`) は background session 管理用の**別機能**で廃止対象ではない。
 
 ## skill の `context: fork` + `agent:` との関係 [spec]
 
@@ -180,7 +213,7 @@ skill 側からも agent を指名できる (詳細は [skills.md](skills.md) �
 
 ### headless 不可
 
-- [ ] `/agents` UI 上での plugin agent の表示・有効化挙動 (対話 UI 専用)
+(該当なし。旧 `/agents` wizard UI に関する項目は wizard 廃止 [実機検証済: v2.1.199] により解消)
 
 ### TODO
 
@@ -188,7 +221,8 @@ skill 側からも agent を指名できる (詳細は [skills.md](skills.md) �
 - [ ] `claude plugin validate` が agent frontmatter のどこまで (必須 field 欠落 / 未サポート field) を検出するか
 - [ ] plugin agent で `hooks` / `mcpServers` / `permissionMode` を書いたとき、警告が出るか黙って無視か
 - [ ] `agents` field 指定時に既定 `agents/` が本当に走査されなくなる (replaces) かの実機確認
-- [ ] `claude agents --json` の `waitingFor` 出現条件・`--all` の完了済みセッション出力差 (§claude agents --json)
+- [ ] `claude agents --json --all` の完了済みセッション出力差 (§claude agents --json、`waitingFor` は v2.1.199 で実機確認済み)
+- [ ] Explore built-in agent の「opus 超モデルでの main session 実行時、cap が実際に opus に効くか」(§組み込み agent、v2.1.199 検証時は main session 自体のモデルが途中 fallback し切り分け不能だった)
 
 ## 参考 URL (出典)
 
