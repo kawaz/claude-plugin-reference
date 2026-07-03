@@ -7,3 +7,4 @@
 | 2026-06-11 | idea | open | [reference-english-translation](./2026-06-11-reference-english-translation.md) | reference 本体の英訳ペア化検討 |
 | 2026-06-19 | request | open | [enhance-sessionstart-with-project-aware-must-reads](./2026-06-19-enhance-sessionstart-with-project-aware-must-reads.md) | SessionStart hook をプロジェクト構造対応で強化 + SKILL.md 内に動的優先度表示 |
 | 2026-06-26 | task | open | [cc-v2-1-193-followup](./2026-06-26-cc-v2-1-193-followup.md) | cc v2.1.193 メンテパス後の follow-up: _unassigned 判定と 5 段 cap 再観測 |
+| 2026-07-03 | idea | idea | [readme-structure-file-tree-drift](./2026-07-03-readme-structure-file-tree-drift.md) | README / README-ja / STRUCTURE.md のファイルツリーが実体と乖離 (部外者観測、要裏取り) |
