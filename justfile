@@ -156,7 +156,9 @@ check-bare-labels:
 #   1. ローカル `claude --version` (= 実行環境の版)
 #   2. npm registry の `@anthropic-ai/claude-code` latest (= 世の中の最新版)。
 #      ネットワーク失敗時は warn して skip (= gate を壊さない)。
-# スタンプ抽出は `> **最終検証:` 行限定にアンカー (本文に "Claude Code vX.Y.Z" を書いても誤検出しない)。
+# スタンプ抽出は last-verified.txt (1 行ロックファイル) から直接取得する
+# (SKILL.md 冒頭のスタンプ行は `!`cat last-verified.txt`` の動的埋め込み構文なので
+# SKILL.md への生 grep では数値を拾えない)。
 # push の deps には含めない (= 任意実行)。
 [script]
 check-freshness:
