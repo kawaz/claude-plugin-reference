@@ -208,18 +208,20 @@ check-bare-labels:
 #   1. ローカル `claude --version` (= 実行環境の版)
 #   2. npm registry の `@anthropic-ai/claude-code` latest (= 世の中の最新版)。
 #      ネットワーク失敗時は warn して skip (= gate を壊さない)。
-# スタンプ抽出は `> **最終検証:` 行限定にアンカー (本文に "Claude Code vX.Y.Z" を書いても誤検出しない)。
+# スタンプ抽出は last-verified.txt (1 行ロックファイル) から直接取得する
+# (SKILL.md 冒頭のスタンプ行は `!`cat last-verified.txt`` の動的埋め込み構文なので
+# SKILL.md への生 grep では数値を拾えない)。
 # push の deps には含めない (= 任意実行)。
 [script]
 check-freshness:
     current=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    stamped=$(grep -E '^> \*\*最終検証:' skills/claude-plugin-reference/SKILL.md | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    stamped=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' skills/claude-plugin-reference/last-verified.txt | head -1)
     if [ -z "$current" ]; then
       echo "ERROR: claude --version の取得に失敗しました" >&2
       exit 1
     fi
     if [ -z "$stamped" ]; then
-      echo "ERROR: SKILL.md の最終検証スタンプが見つかりません (期待行: '> **最終検証: Claude Code vX.Y.Z ...')" >&2
+      echo "ERROR: last-verified.txt の最終検証スタンプが見つかりません (期待形式: 'vX.Y.Z (YYYY-MM-DD)')" >&2
       exit 1
     fi
     # --- npm registry latest との比較 (best-effort) ---
