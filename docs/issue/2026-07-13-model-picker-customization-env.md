@@ -40,6 +40,22 @@ v2.1.207 バイナリの strings で以下を確認 (バイナリ文字列から
 用途実例: CLIProxyAPI (ローカルプロキシ) 経由で外部モデルを `/model` に出す運用が
 個人環境の shell rc 設定で実例として存在する。
 
+### gateway model discovery 経路 (実機検証済み、より強力)
+
+`CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` + `ANTHROPIC_BASE_URL` + firstParty
+認証の組合せで、base URL の `/v1/models?limit=1000` を fetch し、返ってきた全モデルを
+"From gateway" として `/model` ピッカーに自動追加する経路を実機確認した。
+
+- cache: `<config-dir>/cache/gateway-models.json`
+- v2.1.207 で `-p` 実行により cache 生成を実機確認 (30 モデル)
+- ピッカー表示自体の目視確認は未実施 (TUI)
+- 関連バイナリ関数: `$5l` (gate 条件) / `q5l` (fetch) / `mkr` (エントリ供給) /
+  `jeh` (picker 構築。`ANTHROPIC_CUSTOM_MODEL_OPTION` は単数のみ、
+  `availableModels` 由来エントリ追加経路もあり)
+
+cli.md 収載時はこの gateway discovery を主経路として書くのが良さそう
+(`ANTHROPIC_CUSTOM_MODEL_OPTION*` 系は単数枠の副経路として位置づけ)。
+
 ## 受け入れ条件
 
 - [ ] 各 env var / settings フィールドの実機挙動を検証 (TUI でのピッカー表示確認)
