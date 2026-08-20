@@ -40,7 +40,7 @@
 
 | command | 説明 |
 |---|---|
-| `/clear [name]` — alias `/reset` `/new` | 新規会話開始。直前は `/resume` で復帰可、`/clear` 前の中身は `/rewind` でも巻き戻せる [spec v2.1.191]。name で picker のラベル |
+| `/clear [prompt]` — alias `/reset` `/new` | 新規会話開始。直前は `/resume` で復帰可、`/clear` 前の中身は `/rewind` でも巻き戻せる [spec v2.1.191]。**引数はクリア後の最初のプロンプトとして投入される** [実機検証済: v2.1.237] — 引数なしだと後継セッションは何も始めず指示待ちで止まり、引数付きだとその指示で即作業を開始する。公式ドキュメントは `[name]` = picker のラベルと記載 [spec v2.1.191] |
 | `/compact [instructions]` | これまでの会話を要約して context 解放 (rules/skills/memory の生存範囲は `/en/context-window` 参照) |
 | `/context [all]` | コンテキスト消費を色付きグリッドで可視化 |
 | `/resume [session]` — alias `/continue` | session 復帰。v2.1.144 以降 `bg` マーク付きで background session も picker に出る |
