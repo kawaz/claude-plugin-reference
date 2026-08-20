@@ -76,7 +76,7 @@ cmux-msg / hyoui / その他 plugin で hooks を書く時のリファレンス�
 | `CwdChanged` | (なし) | working dir 変更時 | direnv / env reload | `CLAUDE_ENV_FILE` 書き込みで bash tool に env 反映 | [未検証: TODO] |
 | `ConfigChange` | source (`user_settings` / `project_settings` / `local_settings` / `policy_settings` / `skills`) | config file が外部で変更 | reload 制御 | `decision: "block"` で block 可 | ✓ |
 | `FileChanged` | file pattern | watched file 変更 | リアクション処理 | additionalContext | [未検証: TODO] |
-| `WorktreeCreate` | (なし) | git worktree 作成時 | hook into worktree setup | default git behavior を replace 可 | ✓ |
+| `WorktreeCreate` | (なし) | git worktree 作成時 | hook into worktree setup | default git behavior を replace 可 (入出力契約は §6.2) | ✓ |
 | `WorktreeRemove` | (なし) | git worktree 削除時 | cleanup | [未検証: TODO] | [未検証: TODO] |
 | `InstructionsLoaded` | reason (= source 値セットの正本: `session_start` / `nested_traversal` / `path_glob_match` / `include` / `compact`) | CLAUDE.md / rules がコンテキスト load 時 | rule 監査 | [未検証: TODO] | [未検証: TODO] |
 
@@ -286,6 +286,45 @@ Permission deny rule "Read(file_path:...)" targets file_path as a raw string and
   "tool_output": { "result": "..." }     // PostToolUse のみ
 }
 ```
+
+#### WorktreeCreate [実機検証済: v2.1.237]
+
+input:
+
+```json
+{
+  "session_id": "...",
+  "transcript_path": "...",
+  "cwd": "<worktree を作る元リポの絶対パス>",
+  "prompt_id": "...",
+  "hook_event_name": "WorktreeCreate",
+  "name": "agent-<hex id>"
+}
+```
+
+- `name` は Claude Code が決める worktree 名 (Agent の `isolation: "worktree"` なら
+  `agent-<agentId>`)。**呼び出し側は事前に知りえない**ので、hook が配置先を決めるための
+  名前の情報源はこの field だけ
+- worktree 固有の env 変数は追加されない
+
+output (**command 型は JSON でラップしない**):
+
+```
+/absolute/path/to/created/worktree
+```
+
+- **生のパス文字列を stdout に echo するだけ**。`{"hookSpecificOutput": {...}}` を返すと
+  その JSON 文字列自体がパスとして解釈され
+  `WorktreeCreate hook returned a path that is not a directory: <cwd>/{"hookSpecificOutput"...` で失敗する
+  (http / callback 型は `hookSpecificOutput.worktreePath`)
+- **hook 側が先にディレクトリを作ってからパスを echo する**
+  (`The hook must create the directory before echoing its path.`)
+- **返すディレクトリは git worktree でなければならない**。`.git` ファイルを持たないディレクトリは
+  git identity を検証できず `Refusing to use ... as an isolation worktree` で拒否される。
+  jj workspace (`.jj` のみで `.git` を持たない) を返す設計は成立しない
+- パスを返さず exit 0 すると **既定動作にフォールバックせず worktree 作成自体がエラー**になる
+- **失敗しても hook の副作用は巻き戻らない**。作成途中のディレクトリは孤児として残るので、
+  hook は同じ `name` で再実行されても壊れないよう冪等に書く
 
 #### SessionStart
 
@@ -578,7 +617,7 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 | `PermissionRequest` | **deny 扱い** | permission dialog を deny で終わらせる |
 | `PermissionDenied` | [未検証: TODO] | retry に効くか未確認 |
 | `ConfigChange` | **block** | config reload を中断 |
-| `WorktreeCreate` | **block** (= default git behavior を replace) | hook が完全に worktree create を肩代わり |
+| `WorktreeCreate` | **block** (= default git behavior を replace) | hook が完全に worktree create を肩代わり。パス未返却は fallback せずエラー [実機検証済: v2.1.237] |
 | `Stop` | **turn 再開** | 最大 8 連続 block 後に自動 continue (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` で cap 調整可) |
 | `SessionStart` | **stderr 表示のみ** (block 不可)、transcript に `hook_non_blocking_error` attachment として記録 (従来 silently 隠蔽、v2.1.199 で修正) [実機検証済: v2.1.199] | execution 継続 |
 | `Setup` | 同上 [実機検証済: v2.1.199、debug log 経由で確認。`--init-only` は session transcript を生成しないため attachment 形式そのものは未確認] | |
@@ -608,7 +647,7 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 ### TODO (= 検証可能、格上げ対象)
 
 - [ ] `PreCompact` / `PostCompact` / `CwdChanged` / `FileChanged` の出力解釈・blockable (§2.5)
-- [ ] `WorktreeRemove` / `InstructionsLoaded` の出力解釈・blockable (§2.5)
+- [ ] `WorktreeRemove` / `InstructionsLoaded` の出力解釈・blockable (§2.5。`WorktreeCreate` は v2.1.237 で検証済 → §6.2)
 - [ ] `SubagentStart` の hookSpecificOutput 経由の decision (= additionalContext 以外) / `TaskCreated` / `TaskCompleted` / `TeammateIdle` の出力解釈・blockable (§2.6。`SubagentStart` の exit 2 が spawn を block しないことは v2.1.199 で確認済み)
 - [ ] `Elicitation` / `ElicitationResult` の挙動 (MCP server 必要、§2.7)
 - [ ] `SubagentStop` の `decision: "block"` での turn 再開 (§2.6)
