@@ -410,6 +410,49 @@ marketplace が **git repo backed のローカルフォルダパス**として�
 
 project の `.claude/settings.json` だけで `enabledPlugins` / `extraKnownMarketplaces` を宣言しても、その marketplace は自動登録されず plugin もロードされない (= 明示的な install/trust なしでは全 loader path でロードされない、CHANGELOG v2.1.195)。実機確認: headless 実行時の debug log に `Skipping orphaned enabledPlugins entry <id>: marketplace not registered` が出て、当該 plugin は `claude plugin list --json` にも現れなかった。
 
+## private リポジトリの marketplace [実機検証済: v2.1.237]
+
+private リポを marketplace として配る場合の認証と更新の扱い。
+
+### 認証経路
+
+- GitHub の `owner/repo` ショートハンドは **既定で SSH clone** される [spec]。SSH は host が
+  `known_hosts` にあり鍵が ssh-agent に読み込まれていれば通る (Claude Code が対話プロンプトを
+  抑制するため)。HTTPS にしたい場合は `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` [spec]
+- 手動の add / update は git の認証情報ヘルパーを使う (`gh auth login` / macOS keychain /
+  `git-credential-store`) [spec]
+- **バックグラウンド自動更新だけ挙動が違う** [spec]: `git pull` の認証情報ヘルパーを無効化するため
+  HTTPS では private に認証できない。**SSH リモートは影響を受けない**。pull 失敗時は marketplace を
+  ゼロから再 clone にフォールバックする (大きいリポではタイムアウトしうる)。再 clone を避けたい場合は
+  `CLAUDE_CODE_PLUGIN_KEEP_MARKETPLACE_ON_FAILURE=1` (同 env flag の節も参照)
+
+### 複数 GitHub アカウントを鍵で使い分けている環境
+
+`~/.ssh/config` の `Match exec` で cwd と `git remote get-url origin` を見て IdentityAgent を
+切り替える構成の場合:
+
+- **add は対象リポの作業ディレクトリで実行する**。add 時点では clone がまだ無く remote 判定が
+  効かないので、cwd 条件だけが手掛かりになる
+- add 後の update は clone の remote URL で判定できるので **cwd 非依存**
+- `.envrc` で `GH_CONFIG_DIR` 等を切り替えている場合は `(cd <repo> && direnv exec . claude ...)`
+
+### source 種別で挙動が違う
+
+| source | `known_marketplaces.json` の記録 | clone | `marketplace update` |
+|---|---|---|---|
+| github (`owner/repo`) | `{"source":"github","repo":"..."}` + `installLocation` | `plugins/marketplaces/<name>/` にリポ全体 | **必須** (この clone を更新しないと古い marketplace.json を見る) |
+| directory (パス) | `{"source":"directory","path":"..."}` | 作られない (ディレクトリを直接参照) | 不要 |
+
+### install はスナップショットコピー
+
+`plugin install` は `plugins/cache/<marketplace>/<plugin>/<version>/` に **コピー**する。
+したがって **ソースを書き換えても version が据え置きなら `plugin update` は何もしない**
+(`already at the latest version` と表示されて終わる)。配布物を変えたら version bump が必須。
+反映には restart か `/reload-plugins` が要る。
+
+この性質は source 種別に依らない。ローカルパス source にすれば「push 不要」にはできるが、
+「version bump 不要」にはならない。
+
 ## トラブルシュート — `--safe-mode` と bundled skills 無効化
 
 フラグ / 環境変数の実在は `claude --help` で確認済み [実機検証済: v2.1.170]。CLI 全 option のリファレンスは [cli.md](cli.md)、 `--safe-mode` vs `--bare` の比較表は [cli.md `--bare` vs `--safe-mode`](cli.md#--bare-vs---safe-mode) を参照。
