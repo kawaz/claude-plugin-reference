@@ -330,7 +330,12 @@ output (**command 型は JSON でラップしない**):
 
 hook を書くとき、どちらの経路が呼ぶかで後始末の前提が違う (いずれも実体は git worktree、
 命名は `.claude/worktrees/<name>/` + branch `worktree-<name>`)。
-**`WorktreeRemove` hook 自体の stdin / 出力契約は未検証** — 以下はツール側の挙動。
+**`WorktreeRemove` hook は `ExitWorktree(action: "remove")` では発火しない** [実機検証済: v2.1.237]
+(headless で `EnterWorktree` → `ExitWorktree(remove)` を実行しても hook は呼ばれず、`--debug` ログにも
+呼び出しの痕跡が出ない)。後始末に hook を挟む目的でこの event を配線しても動かない。
+バイナリに `Failed to sweep .claude/worktrees project dirs under ${n}` という文字列があるため、
+孤児 worktree の自動 sweep 経路に紐づく可能性があるが **未検証**。
+以下はツール側の挙動 (= hook ではない)。
 
 | 経路 | 後始末 |
 |---|---|
@@ -658,7 +663,8 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 ### TODO (= 検証可能、格上げ対象)
 
 - [ ] `PreCompact` / `PostCompact` / `CwdChanged` / `FileChanged` の出力解釈・blockable (§2.5)
-- [ ] `WorktreeRemove` / `InstructionsLoaded` の出力解釈・blockable (§2.5。`WorktreeCreate` は v2.1.237 で検証済 → §6.2。`WorktreeRemove` は hook 契約が未検証、ツール側の後始末挙動のみ §6.2 に記載)
+- [ ] `WorktreeRemove` の発火経路 — `ExitWorktree(remove)` では未発火を確認済 (§6.2)。孤児 worktree の自動 sweep 経路に紐づく仮説の検証が残り (要: 孤児を残した状態で新規セッション起動)
+- [ ] `InstructionsLoaded` の出力解釈・blockable (§2.5)
 - [ ] `SubagentStart` の hookSpecificOutput 経由の decision (= additionalContext 以外) / `TaskCreated` / `TaskCompleted` / `TeammateIdle` の出力解釈・blockable (§2.6。`SubagentStart` の exit 2 が spawn を block しないことは v2.1.199 で確認済み)
 - [ ] `Elicitation` / `ElicitationResult` の挙動 (MCP server 必要、§2.7)
 - [ ] `SubagentStop` の `decision: "block"` での turn 再開 (§2.6)
