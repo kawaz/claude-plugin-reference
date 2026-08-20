@@ -326,6 +326,17 @@ output (**command 型は JSON でラップしない**):
 - **失敗しても hook の副作用は巻き戻らない**。作成途中のディレクトリは孤児として残るので、
   hook は同じ `name` で再実行されても壊れないよう冪等に書く
 
+##### 参考: worktree の作成元と後始末 [実機検証済: v2.1.237]
+
+hook を書くとき、どちらの経路が呼ぶかで後始末の前提が違う (いずれも実体は git worktree、
+命名は `.claude/worktrees/<name>/` + branch `worktree-<name>`)。
+**`WorktreeRemove` hook 自体の stdin / 出力契約は未検証** — 以下はツール側の挙動。
+
+| 経路 | 後始末 |
+|---|---|
+| `EnterWorktree` / `ExitWorktree` (セッション自身) | `action: "keep"` は残す。`action: "remove"` は**未 push コミットがあると拒否**され、`discard_changes: true` の明示で worktree + branch まで削除 |
+| Agent の `isolation: "worktree"` (subagent) | **自動削除されない**。agent 稼働中は `git worktree list` に `locked` が付き、終了で外れるだけ。削除は呼び出し側の責任 |
+
 #### SessionStart
 
 input:
@@ -647,7 +658,7 @@ PreToolUse:Bash hook error: [echo BLOCKED_BY_HOOK_XYZ >&2; exit 2 #blockmarker-D
 ### TODO (= 検証可能、格上げ対象)
 
 - [ ] `PreCompact` / `PostCompact` / `CwdChanged` / `FileChanged` の出力解釈・blockable (§2.5)
-- [ ] `WorktreeRemove` / `InstructionsLoaded` の出力解釈・blockable (§2.5。`WorktreeCreate` は v2.1.237 で検証済 → §6.2)
+- [ ] `WorktreeRemove` / `InstructionsLoaded` の出力解釈・blockable (§2.5。`WorktreeCreate` は v2.1.237 で検証済 → §6.2。`WorktreeRemove` は hook 契約が未検証、ツール側の後始末挙動のみ §6.2 に記載)
 - [ ] `SubagentStart` の hookSpecificOutput 経由の decision (= additionalContext 以外) / `TaskCreated` / `TaskCompleted` / `TeammateIdle` の出力解釈・blockable (§2.6。`SubagentStart` の exit 2 が spawn を block しないことは v2.1.199 で確認済み)
 - [ ] `Elicitation` / `ElicitationResult` の挙動 (MCP server 必要、§2.7)
 - [ ] `SubagentStop` の `decision: "block"` での turn 再開 (§2.6)
